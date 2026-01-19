@@ -17,6 +17,7 @@ from .io import (
     load_obj_as_grid,
     apply_radioactivity_to_mesh,
     apply_radioactivity_texture,
+    export_textured_obj,
 )
 from .metrics import compute_residuals, compute_correlation
 
@@ -35,6 +36,7 @@ __all__ = [
     "load_obj_as_grid",
     "apply_radioactivity_to_mesh",
     "apply_radioactivity_texture",
+    "export_textured_obj",
     "compute_residuals",
     "compute_correlation",
 ]

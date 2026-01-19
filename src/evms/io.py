@@ -4,11 +4,13 @@ IO utilities for loading/saving data.
 
 import numpy as np
 import json
+import os
 import trimesh
 from typing import List, Tuple
 from .grid import VoxelGrid
 from .fractures import Fracture
 from scipy.spatial import cKDTree
+import matplotlib.pyplot as plt
 
 
 def _normalize_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -262,3 +264,48 @@ def apply_radioactivity_texture(
     textured_mesh = trimesh.Trimesh(vertices=flat_vertices, faces=flat_faces, process=False)
     textured_mesh.visual = trimesh.visual.texture.TextureVisuals(uv=flat_uvs, image=texture)
     return textured_mesh
+
+
+def export_textured_obj(
+    mesh: trimesh.Trimesh,
+    obj_path: str,
+    texture_image: np.ndarray,
+    material_name: str = "material0"
+) -> Tuple[str, str, str]:
+    """
+    Export OBJ with MTL and PNG texture in a viewer-agnostic way.
+    """
+    base_dir = os.path.dirname(obj_path)
+    base_name = os.path.splitext(os.path.basename(obj_path))[0]
+    mtl_name = f"{base_name}.mtl"
+    tex_name = f"{base_name}.png"
+    mtl_path = os.path.join(base_dir, mtl_name)
+    tex_path = os.path.join(base_dir, tex_name)
+
+    plt.imsave(tex_path, texture_image)
+
+    with open(mtl_path, "w") as f:
+        f.write(f"newmtl {material_name}\n")
+        f.write("Ka 1.000 1.000 1.000\n")
+        f.write("Kd 1.000 1.000 1.000\n")
+        f.write("Ks 0.000 0.000 0.000\n")
+        f.write("d 1.000\n")
+        f.write("illum 2\n")
+        f.write(f"map_Kd {tex_name}\n")
+
+    vertices = mesh.vertices
+    faces = mesh.faces
+    uvs = mesh.visual.uv
+
+    with open(obj_path, "w") as f:
+        f.write(f"mtllib {mtl_name}\n")
+        for v in vertices:
+            f.write(f"v {v[0]} {v[1]} {v[2]}\n")
+        for uv in uvs:
+            f.write(f"vt {uv[0]} {uv[1]}\n")
+        f.write(f"usemtl {material_name}\n")
+        for face in faces:
+            a, b, c = face + 1
+            f.write(f"f {a}/{a} {b}/{b} {c}/{c}\n")
+
+    return obj_path, mtl_path, tex_path
