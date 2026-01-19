@@ -6,7 +6,7 @@ Builds sparse matrix A such that M ≈ A S + ε.
 
 import numpy as np
 from scipy import sparse
-from typing import Union
+from scipy.spatial import cKDTree
 from .grid import VoxelGrid
 
 
@@ -44,18 +44,21 @@ def build_forward_operator(
     volume = dx * dy * dz
 
     rows, cols, data = [], [], []
+    tree = cKDTree(centers)
 
     for i in range(n_points):
         x = measurement_points[i]
-        for j in range(n_voxels):
-            r = centers[j]
-            dist = np.linalg.norm(x - r)
-            if dist < R_max:
-                g = 1 / (dist**2 + eps)
-                atten = np.exp(-mu * dist)
-                a_ij = g * atten * volume
-                rows.append(i)
-                cols.append(j)
-                data.append(a_ij)
+        neighbor_idx = tree.query_ball_point(x, r=R_max)
+        if not neighbor_idx:
+            continue
+        neighbor_idx = np.asarray(neighbor_idx, dtype=int)
+        diffs = centers[neighbor_idx] - x
+        dists = np.linalg.norm(diffs, axis=1)
+        g = 1 / (dists**2 + eps)
+        atten = np.exp(-mu * dists)
+        a_ij = g * atten * volume
+        rows.extend([i] * len(neighbor_idx))
+        cols.extend(neighbor_idx.tolist())
+        data.extend(a_ij.tolist())
 
     return sparse.csr_matrix((data, (rows, cols)), shape=(n_points, n_voxels))
