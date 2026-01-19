@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from evms import (
     VoxelGrid, build_forward_operator, build_regularization_matrix,
     solve_tikhonov, select_lambda, load_measurements, load_grid,
-    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture, compute_residuals
+    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture, export_textured_obj, compute_residuals
 )
 
 st.title("EVMS: Radioactivity Inversion")
@@ -188,7 +188,7 @@ if meas_file and grid_file:
             textured_mesh = apply_radioactivity_texture(mesh, grid, S_hat, image_size=1024)
             with tempfile.TemporaryDirectory() as tmpdir:
                 obj_path = os.path.join(tmpdir, "radioactivity_mesh.obj")
-                textured_mesh.export(obj_path)
+                export_textured_obj(textured_mesh, obj_path, textured_mesh.visual.material.image)
                 st.success("OBJ exporté avec texture (OBJ + MTL + PNG)")
                 for ext in ("obj", "mtl", "png"):
                     matches = [p for p in os.listdir(tmpdir) if p.lower().endswith(f".{ext}")]
