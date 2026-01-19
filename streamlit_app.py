@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from evms import (
     VoxelGrid, build_forward_operator, build_regularization_matrix,
     solve_tikhonov, select_lambda, load_measurements, load_grid,
-    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, compute_residuals
+    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture, compute_residuals
 )
 
 st.title("EVMS: Radioactivity Inversion")
@@ -177,34 +177,25 @@ if meas_file and grid_file:
     )
     st.plotly_chart(fig_3d)
 
-    # Export mesh with radioactivity texture (vertex colors)
+    # Export mesh with baked texture (OBJ + MTL + PNG)
     if st.button("Exporter mesh avec texture radioactivité"):
-        # Load original mesh
         with tempfile.NamedTemporaryFile(suffix='.obj', delete=False) as f:
             f.write(grid_file.getvalue())
             obj_temp = f.name
         mesh = trimesh.load(obj_temp)
-        st.write("Mesh chargé avec", len(mesh.vertices), "sommets et", len(mesh.faces), "faces")
         os.unlink(obj_temp)
-        # Apply colors
-        from scipy.spatial import cKDTree
-        centers = grid.voxel_centers()
-        tree = cKDTree(centers)
-        _, indices = tree.query(mesh.vertices)
-        vertex_S = S_hat[indices]
-        mesh_colored = apply_radioactivity_to_mesh(mesh, grid, S_hat)
-        st.write("Valeurs S_hat aux sommets :", vertex_S[:5])  # debug
-        st.write("Couleurs appliquées :", mesh_colored.visual.vertex_colors[:5])  # debug
-        # Generate UV for texture support (planar projection)
-        uv = mesh_colored.vertices[:, :2] - mesh_colored.vertices[:, :2].min(axis=0)
-        uv = uv / uv.max(axis=0)
-        mesh_colored.visual.uv = uv
-        # Save as OBJ with vertex colors (acts as texture)
         try:
-            mesh_colored.export("radioactivity_mesh.obj")
-            st.success("OBJ exporté : radioactivity_mesh.obj (avec couleurs de sommets comme texture)")
-            with open("radioactivity_mesh.obj", "rb") as f:
-                st.download_button("Télécharger OBJ", f, file_name="radioactivity_mesh.obj")
+            textured_mesh = apply_radioactivity_texture(mesh, grid, S_hat, image_size=1024)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                obj_path = os.path.join(tmpdir, "radioactivity_mesh.obj")
+                textured_mesh.export(obj_path)
+                st.success("OBJ exporté avec texture (OBJ + MTL + PNG)")
+                for ext in ("obj", "mtl", "png"):
+                    matches = [p for p in os.listdir(tmpdir) if p.lower().endswith(f".{ext}")]
+                    for name in matches:
+                        path = os.path.join(tmpdir, name)
+                        with open(path, "rb") as f:
+                            st.download_button(f"Télécharger {name}", f, file_name=name)
         except Exception as e:
             st.error(f"Erreur export: {e}")
 
