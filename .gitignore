@@ -1,5 +1,7 @@
 *.md
 !README.md
+*.obj
+examples/
 
 __pycache__/
 *.pyc
