@@ -1,0 +1,16 @@
+name: evms-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - numpy
+  - scipy
+  - matplotlib
+  - streamlit
+  - pytest
+  - trimesh
+  - plotly
+  - pip
+  - pip:
+    - dataclasses  # if needed, but python 3.9 has it

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evms"
+version = "0.1.0"
+description = "Volumetric inversion of geological radioactivity from surface gamma measurements"
+authors = [{name = "Codex"}]
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "streamlit",
+    "pytest",
+    "trimesh",
+    "plotly",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
