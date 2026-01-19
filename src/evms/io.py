@@ -11,6 +11,7 @@ from .grid import VoxelGrid
 from .fractures import Fracture
 from scipy.spatial import cKDTree
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 
 def _normalize_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -67,7 +68,8 @@ def _bake_texture(
     faces: np.ndarray,
     uvs: np.ndarray,
     values: np.ndarray,
-    image_size: int
+    image_size: int,
+    cmap_name: str
 ) -> np.ndarray:
     """
     Rasterize per-face UVs and scalar values into a texture image.
@@ -118,8 +120,10 @@ def _bake_texture(
     mask = weight > 0
     img[mask] /= weight[mask]
     img = np.clip(img, 0.0, 1.0)
-    rgb = (img * 255.0).astype(np.uint8)
-    return np.stack([rgb, rgb, rgb], axis=-1)
+    cmap = cm.get_cmap(cmap_name)
+    rgb = (cmap(img)[..., :3] * 255.0).astype(np.uint8)
+    rgb[~mask] = 0
+    return rgb
 
 
 def load_measurements(csv_path: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -242,7 +246,8 @@ def apply_radioactivity_texture(
     mesh: trimesh.Trimesh,
     grid: VoxelGrid,
     S_hat: np.ndarray,
-    image_size: int = 1024
+    image_size: int = 1024,
+    cmap_name: str = "viridis"
 ) -> trimesh.Trimesh:
     """
     Bake radioactivity into a texture image with box-projected UVs.
@@ -260,7 +265,7 @@ def apply_radioactivity_texture(
     flat_uvs = face_uvs.reshape(-1, 2)
     flat_faces = np.arange(flat_vertices.shape[0]).reshape(-1, 3)
 
-    texture = _bake_texture(faces, face_uvs, vertex_S, image_size)
+    texture = _bake_texture(faces, face_uvs, vertex_S, image_size, cmap_name)
     textured_mesh = trimesh.Trimesh(vertices=flat_vertices, faces=flat_faces, process=False)
     textured_mesh.visual = trimesh.visual.texture.TextureVisuals(uv=flat_uvs, image=texture)
     return textured_mesh
