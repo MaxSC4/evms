@@ -37,6 +37,7 @@ def build_regularization_matrix(
     edges = grid.neighbor_edges()
     n_edges = len(edges)
     n_voxels = grid.n_voxels
+    centers = grid.voxel_centers()
 
     rows, cols, data = [], [], []
 
@@ -44,8 +45,8 @@ def build_regularization_matrix(
         w_layer = 1.0 if layer_labels[j] == layer_labels[jp] else 0.0
         w_fract = 0.0
         if fractures:
-            r_j = grid.voxel_centers()[j]
-            r_jp = grid.voxel_centers()[jp]
+            r_j = centers[j]
+            r_jp = centers[jp]
             for frac in fractures:
                 w_fract += fracture_crossing_weight((r_j, r_jp), frac)
         w_total = w_layer + w_fract
