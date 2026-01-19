@@ -32,10 +32,3 @@ Note: Large OBJ files may take time to voxelize; ensure sufficient RAM.
 ```bash
 pytest
 ```
-
-## Example
-
-Run synthetic demo:
-```bash
-python examples/synth_demo.py
-```
