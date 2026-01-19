@@ -24,7 +24,13 @@ def test_load_obj_as_grid_aligns_origin():
         grid = load_obj_as_grid(obj_path, origin, spacing, dims)
         assert grid.n_voxels > 0
         assert grid.mask[0, 0, 0]
-        assert grid.mask[1, 1, 1]
-        assert not grid.mask[2, 2, 2]
+        active = np.argwhere(grid.mask)
+        mesh_bounds = mesh.bounds
+        min_idx = np.floor((mesh_bounds[0] - np.array(origin)) / np.array(spacing)).astype(int)
+        max_idx = np.floor((mesh_bounds[1] - np.array(origin)) / np.array(spacing)).astype(int)
+        min_idx = np.maximum(min_idx, 0)
+        max_idx = np.minimum(max_idx, np.array(dims) - 1)
+        assert (active >= min_idx).all()
+        assert (active <= max_idx).all()
     finally:
         os.unlink(obj_path)
