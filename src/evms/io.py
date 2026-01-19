@@ -64,41 +64,27 @@ def load_obj_as_grid(obj_path: str, origin: Tuple[float,float,float], spacing: T
     Uses trimesh voxelization with isotropic pitch.
     """
     mesh = trimesh.load(obj_path)
-    # Compute voxel size as min spacing
-    pitch = min(spacing)
-    # Voxelize
+    spacing_arr = np.array(spacing, dtype=float)
+    if not np.allclose(spacing_arr, spacing_arr[0]):
+        raise ValueError("load_obj_as_grid requires isotropic spacing to match voxelization pitch")
+    pitch = float(spacing_arr[0])
     voxel_grid = mesh.voxelized(pitch=pitch)
-    # Get the matrix
-    matrix = voxel_grid.matrix
-    # But our dims may not match; we need to resample or assume dims match the voxelized grid.
-    # For simplicity, assume the voxelized grid matches dims.
-    # But dims are given, so perhaps crop or pad.
-    # To keep simple, use the voxelized matrix as mask, but adjust dims.
-    # Perhaps better: define the grid bounds based on mesh bounds.
-    bounds = mesh.bounds
-    # origin is given, spacing given, dims given.
-    # Compute expected bounds
-    expected_bounds = np.array([
-        [origin[0], origin[1], origin[2]],
-        [origin[0] + dims[0]*spacing[0], origin[1] + dims[1]*spacing[1], origin[2] + dims[2]*spacing[2]]
-    ])
-    # Voxelize with the given pitch, but translate to origin.
-    # Trimesh voxelize centers at 0, need to translate.
-    # This is tricky. For simplicity, voxelize the mesh, then create mask where voxels are filled.
-    # Assume dims is large enough, and set mask to True where voxelized has True.
-    # But shapes may not match.
-    # Let's assume pitch = spacing[0] assuming isotropic, and dims match.
-    pitch = spacing[0]
-    voxel_grid = mesh.voxelized(pitch=pitch)
-    matrix = voxel_grid.matrix
-    # The matrix shape is the dims of the voxel grid.
-    # If it doesn't match dims, we need to handle.
-    # For now, assume it does, or crop/pad.
-    # To make it work, let's create mask of shape dims, and set to True where matrix has True, assuming alignment.
+    points = voxel_grid.points
+
     mask = np.zeros(dims, dtype=bool)
-    vshape = matrix.shape
-    min_shape = min(dims[0], vshape[0]), min(dims[1], vshape[1]), min(dims[2], vshape[2])
-    mask[:min_shape[0], :min_shape[1], :min_shape[2]] = matrix[:min_shape[0], :min_shape[1], :min_shape[2]]
+    if points.size == 0:
+        return VoxelGrid(origin, spacing, dims, mask)
+
+    origin_arr = np.array(origin, dtype=float)
+    rel = (points - origin_arr) / spacing_arr
+    idx = np.floor(rel).astype(int)
+    valid = (
+        (idx[:, 0] >= 0) & (idx[:, 0] < dims[0]) &
+        (idx[:, 1] >= 0) & (idx[:, 1] < dims[1]) &
+        (idx[:, 2] >= 0) & (idx[:, 2] < dims[2])
+    )
+    idx = idx[valid]
+    mask[idx[:, 0], idx[:, 1], idx[:, 2]] = True
     return VoxelGrid(origin, spacing, dims, mask)
 
 
