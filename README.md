@@ -4,9 +4,39 @@ This project implements a Python pipeline for inverting volumetric radioactivity
 
 ## Scientific Overview
 
-The forward model discretizes the integral M(x) = ∫ S(r) G(x,r) exp(-μ ||x-r||) dV into M ≈ A S + ε, with A sparse via truncation to R_max.
+### Forward model
 
-Inversion solves min ||A S - M||^2 + λ R(S), where R promotes smoothing within layers and barriers across fractures.
+The forward model discretizes the volumetric integral relating the subsurface
+radioactivity field $S(\mathbf{r})$ to surface measurements $M(\mathbf{x})$:
+
+$$M(\mathbf{x})=\int_{\Omega}S(\mathbf{r})G(\mathbf{x}\mathbf{r})\\exp\!\big(-\mu\|\mathbf{x}-\mathbf{r}\|\big)\\mathrm{d}V$$
+
+After spatial discretization on a 3D voxel grid, the forward problem can be
+written in matrix form:
+
+```math
+\mathbf{M} \approx \mathbf{A}\mathbf{S} + \boldsymbol{\varepsilon}
+```
+
+The matrix \(\mathbf{A}\) is sparse due to truncation of interactions beyond
+a maximum radius \(R_{\max}\).
+
+---
+
+### Inversion
+
+The inverse problem is formulated as a regularized least-squares optimization:
+
+```math
+\min_{\mathbf{S}}
+\ \|\mathbf{A}\mathbf{S} - \mathbf{M}\|_2^2
+\ +\ \lambda\,\mathcal{R}(\mathbf{S})
+```
+
+where $\mathcal{R}(\mathbf{S})$ promotes spatial smoothing within geological
+layers and reduced continuity across fracture surfaces.
+
+
 
 ## Installation
 
