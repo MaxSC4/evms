@@ -21,28 +21,38 @@ def _normalize_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.
     return bounds[0], bounds[1], size
 
 
-def _box_project_uv(vertices: np.ndarray, faces: np.ndarray, face_normals: np.ndarray) -> np.ndarray:
+def _box_project_uv(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    face_normals: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute per-face UVs using a box projection atlas (3x2 tiles).
+
+    Returns:
+        face_uvs: (n_faces, 3, 2)
+        face_tiles: (n_faces,) tile id in [0, 5]
     """
     vmin, vmax, vsize = _normalize_bounds(vertices)
     tile_w = 1.0 / 3.0
     tile_h = 1.0 / 2.0
     tile_map = {
-        (0, 1): (0, 0),   # +X
-        (0, -1): (1, 0),  # -X
-        (1, 1): (2, 0),   # +Y
-        (1, -1): (0, 1),  # -Y
-        (2, 1): (1, 1),   # +Z
-        (2, -1): (2, 1),  # -Z
+        (0, 1): (0, 0, 0),   # +X
+        (0, -1): (1, 0, 1),  # -X
+        (1, 1): (2, 0, 2),   # +Y
+        (1, -1): (0, 1, 3),  # -Y
+        (2, 1): (1, 1, 4),   # +Z
+        (2, -1): (2, 1, 5),  # -Z
     }
 
     face_uvs = np.zeros((faces.shape[0], 3, 2), dtype=float)
+    face_tiles = np.zeros(faces.shape[0], dtype=int)
     for f_idx, face in enumerate(faces):
         n = face_normals[f_idx]
         axis = int(np.argmax(np.abs(n)))
         sign = 1 if n[axis] >= 0 else -1
-        tx, ty = tile_map[(axis, sign)]
+        tx, ty, tile_id = tile_map[(axis, sign)]
+        face_tiles[f_idx] = tile_id
 
         verts = vertices[face]
         normed = (verts - vmin) / vsize
@@ -61,7 +71,34 @@ def _box_project_uv(vertices: np.ndarray, faces: np.ndarray, face_normals: np.nd
         face_uvs[f_idx, :, 0] = (tx * tile_w) + u * tile_w
         face_uvs[f_idx, :, 1] = (ty * tile_h) + v * tile_h
 
-    return face_uvs
+    return face_uvs, face_tiles
+
+
+def _split_vertices_by_tile(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    face_uvs: np.ndarray,
+    face_tiles: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Duplicate vertices only when a vertex is used across multiple tiles.
+    """
+    new_vertices = []
+    new_uvs = []
+    new_faces = np.zeros_like(faces)
+    mapping = {}
+
+    for f_idx, face in enumerate(faces):
+        tile_id = int(face_tiles[f_idx])
+        for local_idx, v_idx in enumerate(face):
+            key = (int(v_idx), tile_id)
+            if key not in mapping:
+                mapping[key] = len(new_vertices)
+                new_vertices.append(vertices[v_idx])
+                new_uvs.append(face_uvs[f_idx, local_idx])
+            new_faces[f_idx, local_idx] = mapping[key]
+
+    return np.asarray(new_vertices), np.asarray(new_uvs), new_faces
 
 
 def _bake_texture(
@@ -259,15 +296,15 @@ def apply_radioactivity_texture(
 
     faces = mesh.faces
     face_normals = mesh.face_normals
-    face_uvs = _box_project_uv(mesh.vertices, faces, face_normals)
+    face_uvs, face_tiles = _box_project_uv(mesh.vertices, faces, face_normals)
 
-    flat_vertices = mesh.vertices[faces].reshape(-1, 3)
-    flat_uvs = face_uvs.reshape(-1, 2)
-    flat_faces = np.arange(flat_vertices.shape[0]).reshape(-1, 3)
+    new_vertices, new_uvs, new_faces = _split_vertices_by_tile(
+        mesh.vertices, faces, face_uvs, face_tiles
+    )
 
     texture = _bake_texture(faces, face_uvs, vertex_S, image_size, cmap_name)
-    textured_mesh = trimesh.Trimesh(vertices=flat_vertices, faces=flat_faces, process=False)
-    textured_mesh.visual = trimesh.visual.texture.TextureVisuals(uv=flat_uvs, image=texture)
+    textured_mesh = trimesh.Trimesh(vertices=new_vertices, faces=new_faces, process=False)
+    textured_mesh.visual = trimesh.visual.texture.TextureVisuals(uv=new_uvs, image=texture)
     return textured_mesh
 
 
