@@ -284,7 +284,7 @@ def apply_radioactivity_texture(
     grid: VoxelGrid,
     S_hat: np.ndarray,
     image_size: int = 1024,
-    cmap_name: str = "viridis"
+    cmap_name: str = "RdYlGn_r"
 ) -> trimesh.Trimesh:
     """
     Bake radioactivity into a texture image with box-projected UVs.
