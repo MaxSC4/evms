@@ -122,13 +122,13 @@ if meas_file and grid_file:
     """)
 
     st.write(f"Nombre de voxels actifs : {grid.n_voxels}")
-    st.write(f"Radioactivité estimée - Min: {S_hat.min():.2f}, Max: {S_hat.max():.2f}, Moyenne: {S_hat.mean():.2f}")
+    st.write(f"Intensité de source estimée (unités relatives) - Min: {S_hat.min():.2f}, Max: {S_hat.max():.2f}, Moyenne: {S_hat.mean():.2f}")
 
     # Histogram
     fig_hist, ax_hist = plt.subplots()
     ax_hist.hist(S_hat, bins=20, alpha=0.7)
-    ax_hist.set_title("Distribution de la radioactivité estimée")
-    ax_hist.set_xlabel("Radioactivité (Bq/kg)")
+    ax_hist.set_title("Distribution de l'intensité de source estimée")
+    ax_hist.set_xlabel("Intensité de source (unités relatives)")
     ax_hist.set_ylabel("Nombre de voxels")
     st.pyplot(fig_hist)
 
@@ -143,12 +143,12 @@ if meas_file and grid_file:
                     flat_idx += 1
     slice_k = st.slider("Slice k", 0, dims[2]-1, min(5, dims[2]-1))
     fig, ax = plt.subplots(figsize=(8,6))
-    im = ax.imshow(full_S[:, :, slice_k], origin='lower', cmap='viridis')
-    ax.set_title(f"Reconstructed Radioactivity Slice (k={slice_k})")
+    im = ax.imshow(full_S[:, :, slice_k], origin='lower', cmap='RdYlGn_r')
+    ax.set_title(f"Reconstructed Source Intensity Slice (k={slice_k})")
     ax.set_xlabel("X index")
     ax.set_ylabel("Y index")
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Radioactivity (Bq/kg)")
+    cbar.set_label("Source intensity (relative units)")
     st.pyplot(fig)
 
     # 3D Plot
@@ -162,8 +162,9 @@ if meas_file and grid_file:
         marker=dict(
             size=3,
             color=S_hat,
-            colorscale='Viridis',
-            colorbar=dict(title="Radioactivity (Bq/kg)"),
+            colorscale='RdYlGn',
+            reversescale=True,
+            colorbar=dict(title="Source intensity (relative units)"),
             showscale=True
         )
     ))
