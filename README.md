@@ -1,64 +1,83 @@
-# EVMS: Volumetric Inversion of Geological Radioactivity
+# EVMS — Volumetric Inversion of Geological Radioactivity
 
-This project implements a Python pipeline for inverting volumetric radioactivity fields S(r) from surface gamma measurements, using sparse linear algebra and regularization for layered geology and finite fracture barriers.
+![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
 
-## Scientific Overview
+EVMS is a scientific Python framework to reconstruct a 3D subsurface source-intensity field from surface gamma measurements. It combines a sparse forward model, geological regularization, and an interactive Streamlit interface for reproducible inversion workflows.
 
-### Forward model
+## Why EVMS
 
-The forward model discretizes the volumetric integral relating the subsurface
-radioactivity field $S(\mathbf{r})$ to surface measurements $M(\mathbf{x})$:
+- Sparse, scalable inversion on voxel grids (`scipy.sparse`, iterative solvers).
+- Physics-informed forward model with attenuation and distance kernel.
+- Geological priors through layer-aware smoothing and finite fracture barriers.
+- Publication-ready outputs: volumetric field export and textured mesh export.
+- Interactive analysis, diagnostics, and trust reporting in Streamlit.
 
-$$M(\mathbf{x})=\int_{\Omega}S(\mathbf{r})G(\mathbf{x}\mathbf{r})\\exp\!\big(-\mu\|\mathbf{x}-\mathbf{r}\|\big)\\mathrm{d}V$$
+## Scientific Model (Concise)
 
-After spatial discretization on a 3D voxel grid, the forward problem can be
-written in matrix form:
+Forward model:
 
-```math
+$$
+M(\mathbf{x}) = \int_V S(\mathbf{r})\,G(\mathbf{x},\mathbf{r})\,e^{-\mu\|\mathbf{x}-\mathbf{r}\|}\,dV + \varepsilon,
+\qquad
+G(\mathbf{x},\mathbf{r}) = \frac{1}{\|\mathbf{x}-\mathbf{r}\|^2 + \epsilon}
+$$
+
+Voxel discretization:
+
+$$
 \mathbf{M} \approx \mathbf{A}\mathbf{S} + \boldsymbol{\varepsilon}
-```
+$$
 
-The matrix \(\mathbf{A}\) is sparse due to truncation of interactions beyond
-a maximum radius \(R_{\max}\).
+Regularized inversion:
 
----
+$$
+\hat{\mathbf{S}} = \arg\min_{\mathbf{S}}\;\|\mathbf{A}\mathbf{S}-\mathbf{M}\|_2^2 + \lambda\|\mathbf{L}\mathbf{S}\|_2^2
+$$
 
-### Inversion
-
-The inverse problem is formulated as a regularized least-squares optimization:
-
-```math
-\min_{\mathbf{S}}
-\ \|\mathbf{A}\mathbf{S} - \mathbf{M}\|_2^2
-\ +\ \lambda\,\mathcal{R}(\mathbf{S})
-```
-
-where $\mathcal{R}(\mathbf{S})$ promotes spatial smoothing within geological
-layers and reduced continuity across fracture surfaces.
-
-
+where $\mathbf{L}$ is a graph-difference regularizer weighted by layer consistency and fracture crossing penalties.
 
 ## Installation
 
-Create conda environment:
 ```bash
 conda env create -f environment.yml
 conda activate evms-env
 pip install -e .
 ```
 
-## Running the Streamlit App
+## Run the App
 
 ```bash
 streamlit run streamlit_app.py
 ```
 
-Upload measurements CSV, grid NPY or OBJ (for voxelization, up to 500 MB), optional fractures JSON, set parameters, and run inversion.
+The app provides:
+- Inversion workspace
+- Method page (equations and workflow)
+- Credits page
 
-Note: Large OBJ files may take time to voxelize; ensure sufficient RAM.
+## Input Data
 
-## Running Tests
+- **Measurements CSV**: `x,y,z,value`
+- **Grid**: `.npy` mask or `.obj` mesh (voxelized in-app)
+- **Fractures JSON**: optional finite rectangular fracture patches
+- **Calibration CSV**: optional `x,y,z,cps/s`
+
+## Validation and Testing
 
 ```bash
 pytest
 ```
+
+The test suite covers geometry, forward operator behavior, regularization, inversion, calibration, and diagnostics.
+
+## Project Website
+
+Documentation and project updates: [maxsc4.github.io](https://maxsc4.github.io)
+
+## Contact
+
+Maxime SOARES CORREIA — [soarescorreia@ipgp.fr](mailto:soarescorreia@ipgp.fr)
+
+## Citation
+
+A Zenodo DOI release is planned. Citation metadata will be added here once the DOI is minted.
