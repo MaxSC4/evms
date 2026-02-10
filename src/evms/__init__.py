@@ -8,7 +8,7 @@ from .grid import VoxelGrid
 from .forward import build_forward_operator
 from .fractures import Fracture, fracture_crossing_weight
 from .regularization import build_regularization_matrix
-from .inversion import solve_tikhonov, select_lambda
+from .inversion import solve_tikhonov, select_lambda, select_forward_params
 from .calibration import (
     CalibrationModel,
     fit_linear_calibration,
@@ -41,6 +41,7 @@ __all__ = [
     "build_regularization_matrix",
     "solve_tikhonov",
     "select_lambda",
+    "select_forward_params",
     "CalibrationModel",
     "fit_linear_calibration",
     "apply_calibration",
