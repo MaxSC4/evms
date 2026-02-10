@@ -11,7 +11,7 @@ import trimesh
 import plotly.graph_objects as go
 from evms import (
     VoxelGrid, build_forward_operator, build_regularization_matrix,
-    solve_tikhonov, select_lambda, load_measurements, load_grid,
+    solve_tikhonov, select_lambda, select_forward_params, load_measurements, load_grid,
     load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture,
     export_textured_obj, compute_residuals, fit_calibration_from_points, apply_calibration,
     compute_data_misfit_norm, compute_regularization_norm, compute_holdout_error
@@ -25,6 +25,22 @@ mu = st.sidebar.slider("Attenuation mu", 0.0, 0.1, 0.01)
 R_max = st.sidebar.slider("R_max", 1.0, 20.0, 5.0)
 lam_manual = st.sidebar.slider("Lambda (manual)", 1e-3, 1e1, 1.0, format="%.3f")
 use_auto_lam = st.sidebar.checkbox("Auto select lambda", value=True)
+auto_tune_forward = st.sidebar.checkbox("Auto tune mu and R_max", value=False)
+if auto_tune_forward:
+    st.sidebar.caption("Grid-search over forward-model parameters")
+    mu_min = st.sidebar.slider("mu min", 0.0, 0.1, 0.0)
+    mu_max = st.sidebar.slider("mu max", 0.0, 0.1, 0.05)
+    mu_steps = st.sidebar.slider("mu steps", 2, 10, 4)
+    rmax_min = st.sidebar.slider("R_max min", 1.0, 20.0, 2.0)
+    rmax_max = st.sidebar.slider("R_max max", 1.0, 20.0, 10.0)
+    rmax_steps = st.sidebar.slider("R_max steps", 2, 10, 4)
+    tuning_objective_label = st.sidebar.selectbox(
+        "Tuning objective",
+        ["Residual norm", "Holdout RMSE"],
+        index=0,
+    )
+else:
+    tuning_objective_label = "Residual norm"
 
 # File uploads
 st.header("Data Upload")
@@ -103,15 +119,40 @@ if meas_file and grid_file:
     layer_labels = np.zeros(grid.n_voxels, dtype=int)
 
     # Build operators
-    A = build_forward_operator(grid, points, mu, R_max)
     L = build_regularization_matrix(grid, layer_labels, fractures)
+    mu_used = mu
+    rmax_used = R_max
+    tuning_table = None
 
-    # Select lambda
-    if use_auto_lam:
-        lambda_grid = np.logspace(-3, 1, 10)
-        lam, _ = select_lambda(A, M, L, lambda_grid)
+    if auto_tune_forward:
+        mu_grid = np.linspace(mu_min, mu_max, mu_steps)
+        rmax_grid = np.linspace(rmax_min, rmax_max, rmax_steps)
+        if tuning_objective_label == "Holdout RMSE":
+            tuning_objective = "holdout"
+        else:
+            tuning_objective = "residual"
+        lambda_grid = np.logspace(-3, 1, 10) if use_auto_lam else None
+        mu_used, rmax_used, lam, tuning_table = select_forward_params(
+            grid=grid,
+            measurement_points=points,
+            M=M,
+            L=L,
+            mu_grid=mu_grid,
+            rmax_grid=rmax_grid,
+            lam=lam_manual if not use_auto_lam else None,
+            lambda_grid=lambda_grid,
+            objective=tuning_objective,
+            holdout_fraction=float(holdout_fraction),
+            random_state=int(holdout_seed),
+        )
+        A = build_forward_operator(grid, points, mu_used, rmax_used)
     else:
-        lam = lam_manual
+        A = build_forward_operator(grid, points, mu_used, rmax_used)
+        if use_auto_lam:
+            lambda_grid = np.logspace(-3, 1, 10)
+            lam, _ = select_lambda(A, M, L, lambda_grid)
+        else:
+            lam = lam_manual
 
     # Solve
     S_hat = solve_tikhonov(A, M, L, lam)
@@ -146,7 +187,19 @@ if meas_file and grid_file:
                 st.error(f"Calibration error: {exc}")
 
     # Display
+    st.write(f"Forward parameters: mu={mu_used:.4f}, R_max={rmax_used:.3f}")
     st.write(f"Best lambda: {lam}")
+    if tuning_table is not None:
+        st.subheader("Forward tuning results")
+        st.dataframe(
+            {
+                "mu": tuning_table[:, 0],
+                "R_max": tuning_table[:, 1],
+                "lambda": tuning_table[:, 2],
+                "score": tuning_table[:, 3],
+            },
+            use_container_width=True,
+        )
     res = compute_residuals(A, M, S_hat)
     data_misfit_norm = compute_data_misfit_norm(A, M, S_hat)
     reg_norm = compute_regularization_norm(L, S_hat)
