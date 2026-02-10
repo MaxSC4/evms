@@ -36,7 +36,13 @@ with col_a:
 
 with col_b:
     st.subheader("Citation")
-    st.markdown("Coming soon")
+    st.markdown("[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18586941.svg)](https://doi.org/10.5281/zenodo.18586941)")
+    st.code(
+        "SOARES CORREIA, M. (2026). EVMS: Volumetric Inversion of Geological Radioactivity from Surface Gamma "
+        "Measurements (v0.1.1) [Computer software]. GEOPS — Géosciences Paris-Saclay (UMR 8148, CNRS), "
+        "Université Paris-Saclay. https://doi.org/10.5281/zenodo.18586941",
+        language="text",
+    )
 
 st.info(
     "For correspondence: soarescorreia@ipgp.fr and bertrand.saint-bezar@universite-paris-saclay.fr"

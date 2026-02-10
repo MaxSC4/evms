@@ -1,6 +1,7 @@
 # EVMS — Volumetric Inversion of Geological Radioactivity
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18586941.svg)](https://doi.org/10.5281/zenodo.18586941)
 
 EVMS is a scientific Python framework to reconstruct a 3D subsurface source-intensity field from surface gamma measurements. It combines a sparse forward model, geological regularization, and an interactive Streamlit interface for reproducible inversion workflows.
 
@@ -80,4 +81,8 @@ Maxime SOARES CORREIA — [soarescorreia@ipgp.fr](mailto:soarescorreia@ipgp.fr)
 
 ## Citation
 
-A Zenodo DOI release is planned. Citation metadata will be added here once the DOI is minted.
+Copy-paste citation:
+
+```text
+SOARES CORREIA, M. (2026). EVMS: Volumetric Inversion of Geological Radioactivity from Surface Gamma Measurements (v0.1.1) [Computer software]. GEOPS — Géosciences Paris-Saclay (UMR 8148, CNRS), Université Paris-Saclay. https://doi.org/10.5281/zenodo.18586941
+```

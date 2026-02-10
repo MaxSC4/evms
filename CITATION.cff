@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "EVMS: Volumetric Inversion of Geological Radioactivity from Surface Gamma Measurements"
+version: "v0.1.1"
+date-released: 2026-02-10
+doi: "10.5281/zenodo.18586941"
+authors:
+  - family-names: "SOARES CORREIA"
+    given-names: "Maxime"
+    orcid: "https://orcid.org/0009-0000-3357-6442"
+    affiliation: "GEOPS — Géosciences Paris-Saclay (UMR 8148, CNRS), Université Paris-Saclay"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.18586941"
+url: "https://maxsc4.github.io"
+repository-code: "https://github.com/MaxSC4/evms"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evms"
-version = "0.1.0"
+version = "0.1.1"
 description = "Volumetric inversion of geological radioactivity from surface gamma measurements"
 authors = [{name = "Maxime SOARES CORREIA"}]
 dependencies = [
