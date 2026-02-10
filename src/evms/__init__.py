@@ -26,6 +26,12 @@ from .io import (
     export_textured_obj,
 )
 from .metrics import compute_residuals, compute_correlation
+from .metrics import (
+    compute_data_misfit_norm,
+    compute_regularization_norm,
+    compute_holdout_error,
+    HoldoutDiagnostics,
+)
 
 __all__ = [
     "VoxelGrid",
@@ -49,4 +55,8 @@ __all__ = [
     "export_textured_obj",
     "compute_residuals",
     "compute_correlation",
+    "compute_data_misfit_norm",
+    "compute_regularization_norm",
+    "compute_holdout_error",
+    "HoldoutDiagnostics",
 ]
