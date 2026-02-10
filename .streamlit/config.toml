@@ -1,2 +1,12 @@
 [server]
 maxUploadSize = 500
+
+[theme]
+primaryColor = "#7fb83d"
+backgroundColor = "#0f252e"
+secondaryBackgroundColor = "#0a1a22"
+textColor = "#e8f3f5"
+base = "dark"
+
+[client]
+showSidebarNavigation = true
