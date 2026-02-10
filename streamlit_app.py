@@ -12,7 +12,8 @@ import plotly.graph_objects as go
 from evms import (
     VoxelGrid, build_forward_operator, build_regularization_matrix,
     solve_tikhonov, select_lambda, load_measurements, load_grid,
-    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture, export_textured_obj, compute_residuals
+    load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture,
+    export_textured_obj, compute_residuals, fit_calibration_from_points, apply_calibration
 )
 
 st.title("EVMS: Radioactivity Inversion")
@@ -29,6 +30,11 @@ st.header("Data Upload")
 meas_file = st.file_uploader("Measurements CSV (x,y,z,value)", type="csv")
 grid_file = st.file_uploader("Grid NPY or OBJ", type=["npy", "obj"])
 frac_file = st.file_uploader("Fractures JSON (optional)", type="json")
+calib_file = st.file_uploader("Calibration CSV (x,y,z,cps/s) (optional)", type="csv")
+
+# Optional calibration controls
+use_calibration = st.sidebar.checkbox("Apply calibration", value=False)
+fit_calib_offset = st.sidebar.checkbox("Calibration with offset", value=True)
 
 # Compute defaults for grid if OBJ
 default_origin = (0.0, 0.0, 0.0)
@@ -106,10 +112,45 @@ if meas_file and grid_file:
     # Solve
     S_hat = solve_tikhonov(A, M, L, lam)
 
+    # Optional calibration on reconstructed source intensity
+    S_display = S_hat
+    value_unit = "relative units"
+    calibration_model = None
+    calibration_sampled = None
+    calibration_targets = None
+    if use_calibration:
+        if calib_file is None:
+            st.warning("Calibration enabled but no calibration CSV was provided. Using relative units.")
+        else:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                f.write(calib_file.getvalue().decode('utf-8'))
+                calib_temp = f.name
+            cal_points, cal_values = load_measurements(calib_temp)
+            os.unlink(calib_temp)
+            try:
+                calibration_model, calibration_sampled = fit_calibration_from_points(
+                    grid=grid,
+                    s_hat=S_hat,
+                    calibration_points=cal_points,
+                    calibration_values=cal_values,
+                    fit_offset=fit_calib_offset,
+                )
+                calibration_targets = cal_values
+                S_display = apply_calibration(S_hat, calibration_model)
+                value_unit = "cps/s"
+            except ValueError as exc:
+                st.error(f"Calibration error: {exc}")
+
     # Display
     st.write(f"Best lambda: {lam}")
     res = compute_residuals(A, M, S_hat)
     st.write(f"Residual norm: {np.linalg.norm(res)}")
+    if calibration_model is not None:
+        st.write(
+            "Calibration: "
+            f"gain={calibration_model.gain:.6g}, offset={calibration_model.offset:.6g}, "
+            f"R²={calibration_model.r2:.4f}, n={calibration_model.n_samples}"
+        )
 
     st.subheader("Résultats de l'inversion")
     st.write("""
@@ -122,13 +163,16 @@ if meas_file and grid_file:
     """)
 
     st.write(f"Nombre de voxels actifs : {grid.n_voxels}")
-    st.write(f"Intensité de source estimée (unités relatives) - Min: {S_hat.min():.2f}, Max: {S_hat.max():.2f}, Moyenne: {S_hat.mean():.2f}")
+    st.write(
+        f"Intensité de source estimée ({value_unit}) - "
+        f"Min: {S_display.min():.2f}, Max: {S_display.max():.2f}, Moyenne: {S_display.mean():.2f}"
+    )
 
     # Histogram
     fig_hist, ax_hist = plt.subplots()
-    ax_hist.hist(S_hat, bins=20, alpha=0.7)
+    ax_hist.hist(S_display, bins=20, alpha=0.7)
     ax_hist.set_title("Distribution de l'intensité de source estimée")
-    ax_hist.set_xlabel("Intensité de source (unités relatives)")
+    ax_hist.set_xlabel(f"Intensité de source ({value_unit})")
     ax_hist.set_ylabel("Nombre de voxels")
     st.pyplot(fig_hist)
 
@@ -137,10 +181,10 @@ if meas_file and grid_file:
     flat_idx = 0
     for i in range(dims[0]):
         for j in range(dims[1]):
-            for k in range(dims[2]):
-                if grid.mask[i,j,k]:
-                    full_S[i,j,k] = S_hat[flat_idx]
-                    flat_idx += 1
+                for k in range(dims[2]):
+                    if grid.mask[i,j,k]:
+                        full_S[i,j,k] = S_display[flat_idx]
+                        flat_idx += 1
     slice_k = st.slider("Slice k", 0, dims[2]-1, min(5, dims[2]-1))
     fig, ax = plt.subplots(figsize=(8,6))
     im = ax.imshow(full_S[:, :, slice_k], origin='lower', cmap='RdYlGn_r')
@@ -148,7 +192,7 @@ if meas_file and grid_file:
     ax.set_xlabel("X index")
     ax.set_ylabel("Y index")
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Source intensity (relative units)")
+    cbar.set_label(f"Source intensity ({value_unit})")
     st.pyplot(fig)
 
     # 3D Plot
@@ -161,10 +205,10 @@ if meas_file and grid_file:
         mode='markers',
         marker=dict(
             size=3,
-            color=S_hat,
+            color=S_display,
             colorscale='RdYlGn',
             reversescale=True,
-            colorbar=dict(title="Source intensity (relative units)"),
+            colorbar=dict(title=f"Source intensity ({value_unit})"),
             showscale=True
         )
     ))
@@ -186,7 +230,7 @@ if meas_file and grid_file:
         mesh = trimesh.load(obj_temp)
         os.unlink(obj_temp)
         try:
-            textured_mesh = apply_radioactivity_texture(mesh, grid, S_hat, image_size=1024)
+            textured_mesh = apply_radioactivity_texture(mesh, grid, S_display, image_size=1024)
             with tempfile.TemporaryDirectory() as tmpdir:
                 obj_path = os.path.join(tmpdir, "radioactivity_mesh.obj")
                 export_textured_obj(textured_mesh, obj_path, textured_mesh.visual.material.image)
@@ -202,5 +246,5 @@ if meas_file and grid_file:
 
     # Export
     if st.button("Export S_hat"):
-        save_grid(grid, S_hat, "S_hat.npy")
+        save_grid(grid, S_display, "S_hat.npy")
         st.success("Saved S_hat.npy")
