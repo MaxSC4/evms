@@ -188,6 +188,28 @@ if meas_file and grid_file:
 
     # Display
     st.write(f"Forward parameters: mu={mu_used:.4f}, R_max={rmax_used:.3f}")
+    mu_warnings = []
+    # Heuristic range for effective gamma attenuation in this simplified model.
+    typical_mu_min = 1e-3
+    typical_mu_max = 8e-2
+    if mu_used <= 0.0:
+        mu_warnings.append(
+            "mu <= 0 means no attenuation, which is physically implausible for gamma transport in rock."
+        )
+    elif mu_used < typical_mu_min or mu_used > typical_mu_max:
+        mu_warnings.append(
+            f"mu={mu_used:.4f} is outside the typical range [{typical_mu_min:.4f}, {typical_mu_max:.4f}] 1/m; "
+            "treat it as an effective fit parameter."
+        )
+    if auto_tune_forward:
+        mu_span = max(mu_max - mu_min, 1e-12)
+        mu_tol = 0.02 * mu_span
+        if abs(mu_used - mu_min) <= mu_tol or abs(mu_used - mu_max) <= mu_tol:
+            mu_warnings.append(
+                "Tuned mu is at the edge of the search interval; expand/refine mu bounds to confirm identifiability."
+            )
+    for msg in mu_warnings:
+        st.warning(msg)
     st.write(f"Best lambda: {lam}")
     if tuning_table is not None:
         st.subheader("Forward tuning results")
