@@ -9,6 +9,12 @@ from .forward import build_forward_operator
 from .fractures import Fracture, fracture_crossing_weight
 from .regularization import build_regularization_matrix
 from .inversion import solve_tikhonov, select_lambda
+from .calibration import (
+    CalibrationModel,
+    fit_linear_calibration,
+    apply_calibration,
+    fit_calibration_from_points,
+)
 from .io import (
     load_measurements,
     load_grid,
@@ -29,6 +35,10 @@ __all__ = [
     "build_regularization_matrix",
     "solve_tikhonov",
     "select_lambda",
+    "CalibrationModel",
+    "fit_linear_calibration",
+    "apply_calibration",
+    "fit_calibration_from_points",
     "load_measurements",
     "load_grid",
     "load_fractures",
