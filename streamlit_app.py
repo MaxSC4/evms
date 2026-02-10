@@ -13,7 +13,8 @@ from evms import (
     VoxelGrid, build_forward_operator, build_regularization_matrix,
     solve_tikhonov, select_lambda, load_measurements, load_grid,
     load_fractures, save_grid, load_obj_as_grid, apply_radioactivity_to_mesh, apply_radioactivity_texture,
-    export_textured_obj, compute_residuals, fit_calibration_from_points, apply_calibration
+    export_textured_obj, compute_residuals, fit_calibration_from_points, apply_calibration,
+    compute_data_misfit_norm, compute_regularization_norm, compute_holdout_error
 )
 
 st.title("EVMS: Radioactivity Inversion")
@@ -35,6 +36,9 @@ calib_file = st.file_uploader("Calibration CSV (x,y,z,cps/s) (optional)", type="
 # Optional calibration controls
 use_calibration = st.sidebar.checkbox("Apply calibration", value=False)
 fit_calib_offset = st.sidebar.checkbox("Calibration with offset", value=True)
+use_holdout_diagnostics = st.sidebar.checkbox("Compute holdout diagnostics", value=False)
+holdout_fraction = st.sidebar.slider("Holdout fraction", 0.1, 0.5, 0.2, 0.05)
+holdout_seed = st.sidebar.number_input("Holdout random seed", min_value=0, value=42, step=1)
 
 # Compute defaults for grid if OBJ
 default_origin = (0.0, 0.0, 0.0)
@@ -144,13 +148,90 @@ if meas_file and grid_file:
     # Display
     st.write(f"Best lambda: {lam}")
     res = compute_residuals(A, M, S_hat)
-    st.write(f"Residual norm: {np.linalg.norm(res)}")
+    data_misfit_norm = compute_data_misfit_norm(A, M, S_hat)
+    reg_norm = compute_regularization_norm(L, S_hat)
+    holdout_diag = None
+    if use_holdout_diagnostics:
+        try:
+            holdout_diag = compute_holdout_error(
+                A=A,
+                M=M,
+                L=L,
+                lam=lam,
+                holdout_fraction=float(holdout_fraction),
+                random_state=int(holdout_seed),
+            )
+        except ValueError as exc:
+            st.warning(f"Holdout diagnostics unavailable: {exc}")
+
+    st.write(f"Data misfit ||A S - M||: {data_misfit_norm:.4f}")
+    st.write(f"Regularization ||L S||: {reg_norm:.4f}")
     if calibration_model is not None:
         st.write(
             "Calibration: "
             f"gain={calibration_model.gain:.6g}, offset={calibration_model.offset:.6g}, "
             f"R²={calibration_model.r2:.4f}, n={calibration_model.n_samples}"
         )
+
+    st.subheader("Trust report")
+    M_norm = float(np.linalg.norm(M))
+    fit_ratio = data_misfit_norm / (M_norm + 1e-12)
+    fit_score = 1.0 / (1.0 + fit_ratio)
+    score_parts = [fit_score]
+    holdout_txt = "Not computed"
+    if holdout_diag is not None:
+        holdout_scale = float(np.std(M) + 1e-12)
+        holdout_ratio = holdout_diag.holdout_rmse / holdout_scale
+        holdout_score = 1.0 / (1.0 + holdout_ratio)
+        score_parts.append(holdout_score)
+        holdout_txt = (
+            f"RMSE={holdout_diag.holdout_rmse:.4f}, MAE={holdout_diag.holdout_mae:.4f}, "
+            f"n_holdout={holdout_diag.holdout_size}"
+        )
+    trust_score = float(np.mean(score_parts))
+    if trust_score >= 0.75:
+        trust_level = "High"
+        st.success(f"Trust level: {trust_level} (score={trust_score:.3f})")
+    elif trust_score >= 0.45:
+        trust_level = "Moderate"
+        st.warning(f"Trust level: {trust_level} (score={trust_score:.3f})")
+    else:
+        trust_level = "Low"
+        st.error(f"Trust level: {trust_level} (score={trust_score:.3f})")
+    st.write(f"Fit ratio ||A S - M|| / ||M||: {fit_ratio:.4f}")
+    st.write(f"Holdout diagnostics: {holdout_txt}")
+
+    st.subheader("Residual map at measurements")
+    fig_residual_3d = go.Figure(data=go.Scatter3d(
+        x=points[:, 0],
+        y=points[:, 1],
+        z=points[:, 2],
+        mode='markers',
+        marker=dict(
+            size=4,
+            color=res,
+            colorscale='RdBu',
+            reversescale=True,
+            colorbar=dict(title="Residual (M - A S)"),
+            showscale=True
+        )
+    ))
+    fig_residual_3d.update_layout(
+        scene=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Z'
+        ),
+        title="Residual map at measurement points"
+    )
+    st.plotly_chart(fig_residual_3d)
+
+    fig_res, ax_res = plt.subplots()
+    ax_res.hist(res, bins=30, alpha=0.8)
+    ax_res.set_title("Residual distribution")
+    ax_res.set_xlabel("Residual (M - A S)")
+    ax_res.set_ylabel("Count")
+    st.pyplot(fig_res)
 
     st.subheader("Résultats de l'inversion")
     st.write("""
