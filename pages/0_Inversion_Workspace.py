@@ -576,6 +576,7 @@ with export_tab:
         if result["mesh_bytes"] is None:
             st.info("Mesh texture export is available only when the grid input is an OBJ file.")
         else:
+            st.caption("The ZIP bundle contains `radioactivity_mesh.obj`, `radioactivity_mesh.mtl`, and `radioactivity_mesh.png`.")
             try:
                 with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as handle:
                     handle.write(result["mesh_bytes"])
