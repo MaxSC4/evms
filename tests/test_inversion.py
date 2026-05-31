@@ -3,6 +3,7 @@ Tests for inversion.py
 """
 
 import numpy as np
+import pytest
 from scipy import sparse
 from evms.grid import VoxelGrid
 from evms.forward import build_forward_operator
@@ -23,6 +24,32 @@ def test_select_lambda():
     L = sparse.csr_matrix(np.eye(5))
     lam, _ = select_lambda(A, M, L, np.array([0.1, 1.0]))
     assert lam in [0.1, 1.0]
+
+
+def test_select_lambda_holdout():
+    A = sparse.csr_matrix(np.eye(8))
+    M = np.linspace(1.0, 8.0, 8)
+    L = sparse.csr_matrix(np.eye(8))
+    lam, stats = select_lambda(
+        A,
+        M,
+        L,
+        np.array([1e-4, 1e-2, 1.0]),
+        method="holdout",
+        holdout_fraction=0.25,
+        random_state=0,
+    )
+    assert lam in [1e-4, 1e-2, 1.0]
+    assert stats.shape == (3, 3)
+    assert np.all(stats[:, 0] >= 0.0)
+
+
+def test_select_lambda_invalid_method():
+    A = sparse.csr_matrix(np.eye(4))
+    M = np.ones(4)
+    L = sparse.csr_matrix(np.eye(4))
+    with pytest.raises(ValueError):
+        select_lambda(A, M, L, np.array([0.1, 1.0]), method="bad")
 
 
 def test_select_forward_params_residual():

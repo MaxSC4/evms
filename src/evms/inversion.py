@@ -35,37 +35,87 @@ def solve_tikhonov(A, M: np.ndarray, L, lam: float) -> np.ndarray:
     return S_hat
 
 
-def select_lambda(A, M: np.ndarray, L, lambda_grid: np.ndarray) -> Tuple[float, np.ndarray]:
+def select_lambda(
+    A,
+    M: np.ndarray,
+    L,
+    lambda_grid: np.ndarray,
+    method: str = "lcurve",
+    holdout_fraction: float = 0.2,
+    random_state: int = 0,
+) -> Tuple[float, np.ndarray]:
     """
-    Select lambda using L-curve heuristic.
-
-    Compute curvature of L-curve and pick max.
+    Select lambda using either L-curve or holdout CV.
 
     Args:
         A, M, L: As above.
         lambda_grid: Array of lambda values.
+        method: "lcurve" or "holdout".
+        holdout_fraction: Fraction of measurements for holdout CV.
+        random_state: Holdout split seed.
 
     Returns:
-        Best lambda, array of (residual, reg_norm) for each lambda.
+        Best lambda, diagnostics table.
+        - method="lcurve": columns are (residual_norm, reg_norm)
+        - method="holdout": columns are (holdout_rmse, holdout_mae, holdout_l2)
     """
-    res_norms = []
-    reg_norms = []
-    for lam in lambda_grid:
-        S_hat = solve_tikhonov(A, M, L, lam)
-        res = np.linalg.norm(A @ S_hat - M)
-        reg = np.linalg.norm(L @ S_hat)
-        res_norms.append(res)
-        reg_norms.append(reg)
+    lambda_vals = np.asarray(lambda_grid, dtype=float).ravel()
+    if lambda_vals.size == 0:
+        raise ValueError("lambda_grid must not be empty")
+    if not np.all(np.isfinite(lambda_vals)):
+        raise ValueError("lambda_grid must contain finite values")
+    if np.any(lambda_vals <= 0.0):
+        raise ValueError("lambda_grid must contain strictly positive values")
+    method_norm = method.strip().lower()
+    M_arr = np.asarray(M, dtype=float).ravel()
 
-    res_norms = np.array(res_norms)
-    reg_norms = np.array(reg_norms)
+    if method_norm == "lcurve":
+        res_norms = []
+        reg_norms = []
+        for lam in lambda_vals:
+            S_hat = solve_tikhonov(A, M_arr, L, float(lam))
+            res = np.linalg.norm(A @ S_hat - M_arr)
+            reg = np.linalg.norm(L @ S_hat)
+            res_norms.append(res)
+            reg_norms.append(reg)
 
-    # L-curve curvature (simple approximation)
-    log_res = np.log(res_norms)
-    log_reg = np.log(reg_norms)
-    curv = np.abs(np.gradient(np.gradient(log_res, log_reg), log_reg))
-    best_idx = np.argmax(curv)
-    return lambda_grid[best_idx], np.column_stack((res_norms, reg_norms))
+        res_norms = np.asarray(res_norms, dtype=float)
+        reg_norms = np.asarray(reg_norms, dtype=float)
+
+        # L-curve curvature (simple approximation).
+        eps = 1e-12
+        log_res = np.log(np.maximum(res_norms, eps))
+        log_reg = np.log(np.maximum(reg_norms, eps))
+        curv = np.abs(np.gradient(np.gradient(log_res, log_reg), log_reg))
+        best_idx = int(np.argmax(curv))
+        return float(lambda_vals[best_idx]), np.column_stack((res_norms, reg_norms))
+
+    if method_norm == "holdout":
+        from .metrics import compute_holdout_error
+
+        rmse_vals = []
+        mae_vals = []
+        l2_vals = []
+        for lam in lambda_vals:
+            diag = compute_holdout_error(
+                A=A,
+                M=M_arr,
+                L=L,
+                lam=float(lam),
+                holdout_fraction=holdout_fraction,
+                random_state=random_state,
+            )
+            rmse_vals.append(diag.holdout_rmse)
+            mae_vals.append(diag.holdout_mae)
+            l2_vals.append(diag.holdout_l2)
+
+        rmse_arr = np.asarray(rmse_vals, dtype=float)
+        mae_arr = np.asarray(mae_vals, dtype=float)
+        l2_arr = np.asarray(l2_vals, dtype=float)
+        best_idx = int(np.argmin(rmse_arr))
+        return float(lambda_vals[best_idx]), np.column_stack((rmse_arr, mae_arr, l2_arr))
+
+    raise ValueError("method must be 'lcurve' or 'holdout'")
 
 
 def select_forward_params(
@@ -80,6 +130,7 @@ def select_forward_params(
     objective: str = "residual",
     holdout_fraction: float = 0.2,
     random_state: int = 0,
+    lambda_selection_method: str = "lcurve",
 ) -> Tuple[float, float, float, np.ndarray]:
     """
     Grid-search mu and R_max by minimizing a scalar objective.
@@ -96,6 +147,7 @@ def select_forward_params(
         objective: "residual" for ||A S - M||, "holdout" for holdout RMSE.
         holdout_fraction: Holdout fraction when objective="holdout".
         random_state: Seed for holdout split when objective="holdout".
+        lambda_selection_method: "lcurve" or "holdout" when lambda_grid is used.
 
     Returns:
         best_mu, best_rmax, best_lam, table
@@ -126,7 +178,15 @@ def select_forward_params(
         for rmax in rmax_vals:
             A = build_forward_operator(grid, measurement_points, float(mu), float(rmax))
             if lambda_grid is not None:
-                lam_i, _ = select_lambda(A, M_arr, L, np.asarray(lambda_grid, dtype=float))
+                lam_i, _ = select_lambda(
+                    A,
+                    M_arr,
+                    L,
+                    np.asarray(lambda_grid, dtype=float),
+                    method=lambda_selection_method,
+                    holdout_fraction=holdout_fraction,
+                    random_state=random_state,
+                )
             else:
                 lam_i = float(lam)
 
