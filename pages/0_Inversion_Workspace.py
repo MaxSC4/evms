@@ -1,7 +1,9 @@
 """Streamlit interface for EVMS inversion workflow."""
 
+import io
 import os
 import tempfile
+import zipfile
 from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -30,7 +32,6 @@ from evms import (
     load_measurements,
     load_obj_as_grid,
     save_grid,
-    select_forward_params,
     select_lambda,
     solve_tikhonov,
 )
@@ -130,45 +131,21 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     mu_used = float(payload["mu"])
     rmax_used = float(payload["r_max"])
-    tuning_table = None
 
-    if payload["auto_tune_rmax"]:
-        r_lo = min(payload["rmax_min"], payload["rmax_max"])
-        r_hi = max(payload["rmax_min"], payload["rmax_max"])
-
-        rmax_grid = np.linspace(r_lo, r_hi, int(payload["rmax_steps"]))
-        lambda_grid = np.logspace(-3, 1, 10) if payload["use_auto_lam"] else None
-
-        _, rmax_used, lam, tuning_table = select_forward_params(
-            grid=grid,
-            measurement_points=points,
-            M=M,
-            L=L,
-            mu_grid=np.array([mu_used], dtype=float),
-            rmax_grid=rmax_grid,
-            lam=payload["lam_manual"] if not payload["use_auto_lam"] else None,
-            lambda_grid=lambda_grid,
-            objective=payload["tuning_objective"],
+    A = build_forward_operator(grid, points, mu_used, rmax_used)
+    if payload["use_auto_lam"]:
+        lambda_grid = np.logspace(-3, 1, 10)
+        lam, _ = select_lambda(
+            A,
+            M,
+            L,
+            lambda_grid,
+            method=payload["lambda_selection_method"],
             holdout_fraction=float(payload["holdout_fraction"]),
             random_state=int(payload["holdout_seed"]),
-            lambda_selection_method=payload["lambda_selection_method"],
         )
-        A = build_forward_operator(grid, points, mu_used, rmax_used)
     else:
-        A = build_forward_operator(grid, points, mu_used, rmax_used)
-        if payload["use_auto_lam"]:
-            lambda_grid = np.logspace(-3, 1, 10)
-            lam, _ = select_lambda(
-                A,
-                M,
-                L,
-                lambda_grid,
-                method=payload["lambda_selection_method"],
-                holdout_fraction=float(payload["holdout_fraction"]),
-                random_state=int(payload["holdout_seed"]),
-            )
-        else:
-            lam = float(payload["lam_manual"])
+        lam = float(payload["lam_manual"])
 
     S_hat = solve_tikhonov(A, M, L, lam)
 
@@ -227,7 +204,6 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
         "rmax_used": rmax_used,
         "lam": lam,
         "lambda_selection_method": payload["lambda_selection_method"],
-        "tuning_table": tuning_table,
         "mesh_bytes": payload.get("mesh_bytes"),
     }
 
@@ -285,31 +261,6 @@ if use_auto_lam:
 else:
     lambda_method_label = "L-curve"
 
-auto_tune_rmax = st.sidebar.checkbox("Auto-tune R_max", value=False)
-if auto_tune_rmax:
-    st.sidebar.caption("Grid-search over the influence radius only; mu stays fixed.")
-    rmax_min = st.sidebar.slider(
-        "R_max min",
-        min_value=float(rmax_phys_min),
-        max_value=float(rmax_phys_max),
-        value=float(rmax_phys_min),
-        step=0.01,
-        format="%.2f",
-    )
-    rmax_max = st.sidebar.slider(
-        "R_max max",
-        min_value=float(rmax_phys_min),
-        max_value=float(rmax_phys_max),
-        value=float(rmax_phys_max),
-        step=0.01,
-        format="%.2f",
-    )
-    rmax_steps = st.sidebar.slider("R_max steps", 2, 10, 4)
-    tuning_objective = st.sidebar.selectbox("Tuning objective", ["Residual norm", "Holdout RMSE"], index=0)
-else:
-    rmax_min = rmax_max = r_max
-    rmax_steps = 2
-    tuning_objective = "Residual norm"
 
 st.sidebar.header("Diagnostics Controls")
 use_holdout_diagnostics = st.sidebar.checkbox("Compute holdout diagnostics", value=False)
@@ -465,11 +416,6 @@ if run_clicked:
             "lam_manual": lam_manual,
             "use_auto_lam": use_auto_lam,
             "lambda_selection_method": "holdout" if lambda_method_label == "Holdout CV" else "lcurve",
-            "auto_tune_rmax": auto_tune_rmax,
-            "rmax_min": rmax_min,
-            "rmax_max": rmax_max,
-            "rmax_steps": rmax_steps,
-            "tuning_objective": "holdout" if tuning_objective == "Holdout RMSE" else "residual",
             "use_holdout_diagnostics": use_holdout_diagnostics,
             "holdout_fraction": holdout_fraction,
             "holdout_seed": int(holdout_seed),
@@ -524,17 +470,6 @@ else:
 
 st.write(f"Fit ratio ||AS - M|| / ||M||: {result['fit_ratio']:.4f}")
 st.write(f"Holdout diagnostics: {result['holdout_summary']}")
-
-if result["tuning_table"] is not None:
-    st.subheader("R_max Tuning Table")
-    st.dataframe(
-        {
-            "R_max": result["tuning_table"][:, 1],
-            "lambda": result["tuning_table"][:, 2],
-            "score": result["tuning_table"][:, 3],
-        },
-        use_container_width=True,
-    )
 
 vol_tab, diag_tab, export_tab = st.tabs(["Reconstruction", "Diagnostics", "Export"])
 
@@ -640,27 +575,32 @@ with export_tab:
     with col_export_1:
         if result["mesh_bytes"] is None:
             st.info("Mesh texture export is available only when the grid input is an OBJ file.")
-        elif st.button("Export textured mesh (OBJ+MTL+PNG)", use_container_width=True):
-            with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as handle:
-                handle.write(result["mesh_bytes"])
-                obj_temp = handle.name
-            mesh = trimesh.load(obj_temp)
-            os.unlink(obj_temp)
-            with tempfile.TemporaryDirectory() as tmpdir:
-                try:
+        else:
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as handle:
+                    handle.write(result["mesh_bytes"])
+                    obj_temp = handle.name
+                mesh = trimesh.load(obj_temp)
+                os.unlink(obj_temp)
+                with tempfile.TemporaryDirectory() as tmpdir:
                     textured_mesh = apply_radioactivity_texture(mesh, result["grid"], result["S_display"], image_size=1024)
                     obj_path = os.path.join(tmpdir, "radioactivity_mesh.obj")
                     export_textured_obj(textured_mesh, obj_path, textured_mesh.visual.material.image)
-                    st.success("Mesh export prepared.")
-                    for ext in ("obj", "mtl", "png"):
-                        for name in sorted(p for p in os.listdir(tmpdir) if p.lower().endswith(f".{ext}")):
-                            path = os.path.join(tmpdir, name)
-                            with open(path, "rb") as fobj:
-                                st.download_button(
-                                    f"Download {name}",
-                                    fobj,
-                                    file_name=name,
-                                    use_container_width=True,
-                                )
-                except Exception as exc:
-                    st.error(f"Texture export failed: {exc}")
+
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                        for ext in ("obj", "mtl", "png"):
+                            for name in sorted(p for p in os.listdir(tmpdir) if p.lower().endswith(f".{ext}")):
+                                file_path = os.path.join(tmpdir, name)
+                                zf.write(file_path, arcname=name)
+                    zip_buffer.seek(0)
+
+                st.download_button(
+                    "Download textured mesh bundle (.zip)",
+                    zip_buffer,
+                    file_name="radioactivity_mesh_bundle.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+            except Exception as exc:
+                st.error(f"Texture export failed: {exc}")
