@@ -10,6 +10,10 @@ import plotly.graph_objects as go
 import streamlit as st
 import trimesh
 
+from streamlit_bootstrap import ensure_project_on_path
+
+ensure_project_on_path()
+
 from evms import (
     VoxelGrid,
     apply_calibration,
@@ -146,13 +150,22 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
             objective=payload["tuning_objective"],
             holdout_fraction=float(payload["holdout_fraction"]),
             random_state=int(payload["holdout_seed"]),
+            lambda_selection_method=payload["lambda_selection_method"],
         )
         A = build_forward_operator(grid, points, mu_used, rmax_used)
     else:
         A = build_forward_operator(grid, points, mu_used, rmax_used)
         if payload["use_auto_lam"]:
             lambda_grid = np.logspace(-3, 1, 10)
-            lam, _ = select_lambda(A, M, L, lambda_grid)
+            lam, _ = select_lambda(
+                A,
+                M,
+                L,
+                lambda_grid,
+                method=payload["lambda_selection_method"],
+                holdout_fraction=float(payload["holdout_fraction"]),
+                random_state=int(payload["holdout_seed"]),
+            )
         else:
             lam = float(payload["lam_manual"])
 
@@ -212,6 +225,7 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
         "mu_used": mu_used,
         "rmax_used": rmax_used,
         "lam": lam,
+        "lambda_selection_method": payload["lambda_selection_method"],
         "tuning_table": tuning_table,
         "mu_search_bounds": (payload.get("mu_min"), payload.get("mu_max")),
         "mesh_bytes": payload.get("mesh_bytes"),
@@ -254,6 +268,14 @@ mu = st.sidebar.slider("Attenuation mu (1/m)", 0.0, 0.1, 0.01)
 r_max = st.sidebar.slider("Influence radius R_max (m)", 1.0, 20.0, 5.0)
 lam_manual = st.sidebar.slider("Lambda (manual)", 1e-3, 1e1, 1.0, format="%.3f")
 use_auto_lam = st.sidebar.checkbox("Auto-select lambda (L-curve)", value=True)
+if use_auto_lam:
+    lambda_method_label = st.sidebar.selectbox(
+        "Lambda selection method",
+        ["L-curve", "Holdout CV"],
+        index=0,
+    )
+else:
+    lambda_method_label = "L-curve"
 
 auto_tune_forward = st.sidebar.checkbox("Auto-tune mu and R_max", value=False)
 if auto_tune_forward:
@@ -373,6 +395,7 @@ if run_clicked:
             "r_max": r_max,
             "lam_manual": lam_manual,
             "use_auto_lam": use_auto_lam,
+            "lambda_selection_method": "holdout" if lambda_method_label == "Holdout CV" else "lcurve",
             "auto_tune_forward": auto_tune_forward,
             "mu_min": mu_min,
             "mu_max": mu_max,
@@ -416,6 +439,7 @@ st.write(
     f"Forward parameters: `mu={result['mu_used']:.4f} 1/m`, `R_max={result['rmax_used']:.3f} m`, "
     f"`lambda={result['lam']:.5g}`"
 )
+st.write(f"Lambda selection method: `{result['lambda_selection_method']}`")
 _render_mu_warnings(result, auto_tune_forward)
 
 if result["calibration_model"] is not None:

@@ -1,6 +1,11 @@
 """EVMS Streamlit entrypoint with official sidebar page navigation."""
 
+from streamlit_bootstrap import ensure_project_on_path
+
 import streamlit as st
+
+
+ensure_project_on_path()
 
 
 st.set_page_config(
