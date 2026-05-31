@@ -37,6 +37,13 @@ def build_forward_operator(
     Returns:
         Sparse CSR matrix of shape (n_points, n_voxels).
     """
+    if mu <= 0.0:
+        raise ValueError("mu must be strictly positive")
+    if R_max <= 0.0:
+        raise ValueError("R_max must be strictly positive")
+    if eps <= 0.0:
+        raise ValueError("eps must be strictly positive")
+
     centers = grid.voxel_centers()
     n_points, _ = measurement_points.shape
     n_voxels = grid.n_voxels

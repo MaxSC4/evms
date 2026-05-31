@@ -67,13 +67,13 @@ def test_select_forward_params_residual():
         measurement_points=points,
         M=M,
         L=L,
-        mu_grid=np.array([0.0, mu_true, 0.03]),
+        mu_grid=np.array([0.005, mu_true, 0.03]),
         rmax_grid=np.array([1.5, rmax_true]),
         lam=1e-8,
         objective="residual",
     )
 
-    assert mu in [0.0, mu_true, 0.03]
+    assert mu in [0.005, mu_true, 0.03]
     assert rmax in [1.5, rmax_true]
     assert np.isclose(lam, 1e-8)
     assert table.shape == (6, 4)
@@ -93,7 +93,7 @@ def test_select_forward_params_holdout():
         measurement_points=points,
         M=M,
         L=L,
-        mu_grid=np.array([0.0, 0.02]),
+        mu_grid=np.array([0.01, 0.02]),
         rmax_grid=np.array([2.0, 3.0]),
         lam=1e-4,
         objective="holdout",
@@ -101,7 +101,25 @@ def test_select_forward_params_holdout():
         random_state=0,
     )
 
-    assert mu in [0.0, 0.02]
+    assert mu in [0.01, 0.02]
     assert rmax in [2.0, 3.0]
     assert np.isclose(lam, 1e-4)
     assert table.shape == (4, 4)
+
+
+def test_select_forward_params_rejects_non_positive_mu():
+    grid = VoxelGrid((0.0, 0.0, 0.0), (1.0, 1.0, 1.0), (2, 2, 1))
+    points = grid.voxel_centers()
+    M = np.ones(points.shape[0])
+    L = sparse.csr_matrix(np.eye(grid.n_voxels))
+
+    with pytest.raises(ValueError):
+        select_forward_params(
+            grid=grid,
+            measurement_points=points,
+            M=M,
+            L=L,
+            mu_grid=np.array([0.0, 0.01]),
+            rmax_grid=np.array([1.0, 2.0]),
+            lam=1e-4,
+        )

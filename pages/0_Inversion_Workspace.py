@@ -264,8 +264,8 @@ if "evms_result" not in st.session_state:
     st.session_state["evms_result"] = None
 
 st.sidebar.header("Model Controls")
-mu = st.sidebar.slider("Attenuation mu (1/m)", 0.0, 0.1, 0.01)
-r_max = st.sidebar.slider("Influence radius R_max (m)", 1.0, 20.0, 5.0)
+mu = st.sidebar.slider("Attenuation mu (1/m)", 1e-4, 0.1, 0.01, format="%.4f")
+r_max = st.sidebar.slider("Influence radius R_max (m)", 0.05, 20.0, 5.0, format="%.2f")
 lam_manual = st.sidebar.slider("Lambda (manual)", 1e-3, 1e1, 1.0, format="%.3f")
 use_auto_lam = st.sidebar.checkbox("Auto-select lambda (L-curve)", value=True)
 if use_auto_lam:
@@ -280,11 +280,11 @@ else:
 auto_tune_forward = st.sidebar.checkbox("Auto-tune mu and R_max", value=False)
 if auto_tune_forward:
     st.sidebar.caption("Grid-search over forward-model parameters")
-    mu_min = st.sidebar.slider("mu min", 0.0, 0.1, 0.0)
-    mu_max = st.sidebar.slider("mu max", 0.0, 0.1, 0.05)
+    mu_min = st.sidebar.slider("mu min", 1e-4, 0.1, 1e-4, format="%.4f")
+    mu_max = st.sidebar.slider("mu max", 1e-4, 0.1, 0.05, format="%.4f")
     mu_steps = st.sidebar.slider("mu steps", 2, 10, 4)
-    rmax_min = st.sidebar.slider("R_max min", 1.0, 20.0, 2.0)
-    rmax_max = st.sidebar.slider("R_max max", 1.0, 20.0, 10.0)
+    rmax_min = st.sidebar.slider("R_max min", 0.05, 20.0, 0.5, format="%.2f")
+    rmax_max = st.sidebar.slider("R_max max", 0.05, 20.0, 10.0, format="%.2f")
     rmax_steps = st.sidebar.slider("R_max steps", 2, 10, 4)
     tuning_objective = st.sidebar.selectbox("Tuning objective", ["Residual norm", "Holdout RMSE"], index=0)
 else:

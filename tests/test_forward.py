@@ -3,6 +3,7 @@ Tests for forward.py
 """
 
 import numpy as np
+import pytest
 from evms.grid import VoxelGrid
 from evms.forward import build_forward_operator
 
@@ -35,3 +36,14 @@ def test_build_forward_matches_bruteforce():
                 expected[i, j] = g * atten * volume
 
     np.testing.assert_allclose(A, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_build_forward_rejects_non_positive_mu_and_rmax():
+    grid = VoxelGrid((0, 0, 0), (1, 1, 1), (2, 2, 2))
+    points = np.array([[0.5, 0.5, 0.5]])
+
+    with pytest.raises(ValueError):
+        build_forward_operator(grid, points, 0.0, 2.0)
+
+    with pytest.raises(ValueError):
+        build_forward_operator(grid, points, 0.01, 0.0)

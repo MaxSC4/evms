@@ -159,8 +159,8 @@ def select_forward_params(
         raise ValueError("mu_grid and rmax_grid must not be empty")
     if not np.all(np.isfinite(mu_vals)) or not np.all(np.isfinite(rmax_vals)):
         raise ValueError("mu_grid and rmax_grid must contain finite values")
-    if np.any(mu_vals < 0.0):
-        raise ValueError("mu_grid must contain non-negative values")
+    if np.any(mu_vals <= 0.0):
+        raise ValueError("mu_grid must contain strictly positive values")
     if np.any(rmax_vals <= 0.0):
         raise ValueError("rmax_grid must contain positive values")
     if objective not in {"residual", "holdout"}:
