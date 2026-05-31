@@ -54,7 +54,11 @@ def _uploaded_to_temp(uploaded_file: Any, suffix: str, text_mode: bool = False) 
         return handle.name
 
 
-def _estimate_defaults_from_obj(uploaded_obj: Any) -> Tuple[Tuple[float, float, float], float, Tuple[int, int, int]]:
+def _dims_from_spacing(size: np.ndarray, spacing: float) -> Tuple[int, int, int]:
+    return tuple(max(1, int(np.ceil(float(axis) / float(spacing)))) for axis in size)
+
+
+def _estimate_defaults_from_obj(uploaded_obj: Any) -> Tuple[Tuple[float, float, float], np.ndarray, float, Tuple[int, int, int]]:
     obj_temp = _uploaded_to_temp(uploaded_obj, ".obj", text_mode=False)
     mesh = trimesh.load(obj_temp)
     os.unlink(obj_temp)
@@ -62,8 +66,8 @@ def _estimate_defaults_from_obj(uploaded_obj: Any) -> Tuple[Tuple[float, float, 
     origin = tuple(bounds[0].astype(float))
     size = (bounds[1] - bounds[0]).astype(float)
     spacing = float(max(min(size) / 12.0, 1e-3))
-    dims = tuple(int(np.ceil(axis / spacing)) for axis in size)
-    return origin, spacing, dims
+    dims = _dims_from_spacing(size, spacing)
+    return origin, size, spacing, dims
 
 
 def _build_full_volume(grid: VoxelGrid, values: np.ndarray) -> np.ndarray:
@@ -312,13 +316,16 @@ calib_file = st.file_uploader("Calibration CSV (`x,y,z,cps/s`) (optional)", type
 st.markdown("</div>", unsafe_allow_html=True)
 
 default_origin = (0.0, 0.0, 0.0)
+default_size = np.array([10.0, 10.0, 10.0], dtype=float)
 default_spacing = 1.0
 default_dims = (10, 10, 10)
-if grid_file is not None and grid_file.name.lower().endswith(".obj"):
+obj_defaults_available = grid_file is not None and grid_file.name.lower().endswith(".obj")
+if obj_defaults_available:
     try:
-        default_origin, default_spacing, default_dims = _estimate_defaults_from_obj(grid_file)
+        default_origin, default_size, default_spacing, default_dims = _estimate_defaults_from_obj(grid_file)
     except Exception as exc:
         st.warning(f"Could not infer defaults from OBJ: {exc}")
+        obj_defaults_available = False
 
 st.markdown('<div class="evms-card">', unsafe_allow_html=True)
 st.subheader("Grid Definition")
@@ -330,15 +337,64 @@ with col_g1:
 with col_g2:
     origin_z = st.number_input("Origin Z", value=float(default_origin[2]))
 
-col_s0, col_s1, col_s2, col_s3 = st.columns(4)
-with col_s0:
-    spacing_scalar = st.number_input("Isotropic spacing", value=float(default_spacing), min_value=1e-6)
-with col_s1:
-    dims_x = st.number_input("Dims X", value=int(default_dims[0]), min_value=1, step=1)
-with col_s2:
-    dims_y = st.number_input("Dims Y", value=int(default_dims[1]), min_value=1, step=1)
-with col_s3:
-    dims_z = st.number_input("Dims Z", value=int(default_dims[2]), min_value=1, step=1)
+if obj_defaults_available:
+    resolution_mode = st.radio(
+        "Voxel resolution mode",
+        ["Resolution slider", "Manual spacing"],
+        horizontal=True,
+        help="Use the slider to request tighter or coarser voxels relative to the mesh-inferred default.",
+    )
+else:
+    resolution_mode = "Manual spacing"
+
+if resolution_mode == "Resolution slider":
+    resolution_factor = st.slider(
+        "Resolution factor",
+        min_value=0.25,
+        max_value=10.0,
+        value=1.0,
+        step=0.25,
+        help="Higher values produce smaller voxels and a denser grid.",
+    )
+    spacing_scalar = max(float(default_spacing) / float(resolution_factor), 1e-6)
+    dims_x, dims_y, dims_z = _dims_from_spacing(default_size, spacing_scalar)
+    estimated_voxels = int(dims_x * dims_y * dims_z)
+
+    col_s0, col_s1, col_s2, col_s3 = st.columns(4)
+    with col_s0:
+        st.metric("Spacing", f"{spacing_scalar:.4f} m")
+    with col_s1:
+        st.metric("Dims X", f"{dims_x}")
+    with col_s2:
+        st.metric("Dims Y", f"{dims_y}")
+    with col_s3:
+        st.metric("Dims Z", f"{dims_z}")
+
+    st.caption(
+        f"Default mesh-derived spacing is {default_spacing:.4f} m. "
+        "Increase the factor for tighter voxelization."
+    )
+    st.caption(f"Estimated full grid size: {estimated_voxels:,} voxels")
+
+    if estimated_voxels >= 2_000_000:
+        st.warning(
+            "This resolution is very dense and may lead to slow forward assembly, high memory use, "
+            "or unstable interactivity."
+        )
+    elif estimated_voxels >= 500_000:
+        st.info(
+            "This resolution is relatively dense; expect longer runtimes and a heavier inversion."
+        )
+else:
+    col_s0, col_s1, col_s2, col_s3 = st.columns(4)
+    with col_s0:
+        spacing_scalar = st.number_input("Isotropic spacing", value=float(default_spacing), min_value=1e-6)
+    with col_s1:
+        dims_x = st.number_input("Dims X", value=int(default_dims[0]), min_value=1, step=1)
+    with col_s2:
+        dims_y = st.number_input("Dims Y", value=int(default_dims[1]), min_value=1, step=1)
+    with col_s3:
+        dims_z = st.number_input("Dims Z", value=int(default_dims[2]), min_value=1, step=1)
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.expander("Model equations", expanded=False).markdown(
