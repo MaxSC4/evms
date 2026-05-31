@@ -256,7 +256,24 @@ if "evms_result" not in st.session_state:
 
 st.sidebar.header("Model Controls")
 mu = st.sidebar.slider("Attenuation mu (1/m)", 8.0, 16.0, 12.0, step=0.1, format="%.1f")
-r_max = st.sidebar.slider("Influence radius R_max (m)", 0.05, 20.0, 5.0, format="%.2f")
+
+attenuation_length = 1.0 / mu
+rmax_phys_min = 3.0 * attenuation_length
+rmax_phys_default = 4.0 * attenuation_length
+rmax_phys_max = 6.0 * attenuation_length
+
+st.sidebar.caption(
+    "Physics-guided rule: use an influence radius on the order of 3 to 6 attenuation lengths, "
+    "with a first-pass default near 4/μ."
+)
+r_max = st.sidebar.slider(
+    "Influence radius R_max (m)",
+    min_value=float(rmax_phys_min),
+    max_value=float(rmax_phys_max),
+    value=float(rmax_phys_default),
+    step=0.01,
+    format="%.2f",
+)
 lam_manual = st.sidebar.slider("Lambda (manual)", 1e-3, 1e1, 1.0, format="%.3f")
 use_auto_lam = st.sidebar.checkbox("Auto-select lambda (L-curve)", value=True)
 if use_auto_lam:
@@ -271,8 +288,22 @@ else:
 auto_tune_rmax = st.sidebar.checkbox("Auto-tune R_max", value=False)
 if auto_tune_rmax:
     st.sidebar.caption("Grid-search over the influence radius only; mu stays fixed.")
-    rmax_min = st.sidebar.slider("R_max min", 0.05, 20.0, 0.5, format="%.2f")
-    rmax_max = st.sidebar.slider("R_max max", 0.05, 20.0, 10.0, format="%.2f")
+    rmax_min = st.sidebar.slider(
+        "R_max min",
+        min_value=float(rmax_phys_min),
+        max_value=float(rmax_phys_max),
+        value=float(rmax_phys_min),
+        step=0.01,
+        format="%.2f",
+    )
+    rmax_max = st.sidebar.slider(
+        "R_max max",
+        min_value=float(rmax_phys_min),
+        max_value=float(rmax_phys_max),
+        value=float(rmax_phys_max),
+        step=0.01,
+        format="%.2f",
+    )
     rmax_steps = st.sidebar.slider("R_max steps", 2, 10, 4)
     tuning_objective = st.sidebar.selectbox("Tuning objective", ["Residual norm", "Holdout RMSE"], index=0)
 else:
