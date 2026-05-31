@@ -132,22 +132,19 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
     rmax_used = float(payload["r_max"])
     tuning_table = None
 
-    if payload["auto_tune_forward"]:
-        mu_lo = min(payload["mu_min"], payload["mu_max"])
-        mu_hi = max(payload["mu_min"], payload["mu_max"])
+    if payload["auto_tune_rmax"]:
         r_lo = min(payload["rmax_min"], payload["rmax_max"])
         r_hi = max(payload["rmax_min"], payload["rmax_max"])
 
-        mu_grid = np.linspace(mu_lo, mu_hi, int(payload["mu_steps"]))
         rmax_grid = np.linspace(r_lo, r_hi, int(payload["rmax_steps"]))
         lambda_grid = np.logspace(-3, 1, 10) if payload["use_auto_lam"] else None
 
-        mu_used, rmax_used, lam, tuning_table = select_forward_params(
+        _, rmax_used, lam, tuning_table = select_forward_params(
             grid=grid,
             measurement_points=points,
             M=M,
             L=L,
-            mu_grid=mu_grid,
+            mu_grid=np.array([mu_used], dtype=float),
             rmax_grid=rmax_grid,
             lam=payload["lam_manual"] if not payload["use_auto_lam"] else None,
             lambda_grid=lambda_grid,
@@ -231,34 +228,24 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
         "lam": lam,
         "lambda_selection_method": payload["lambda_selection_method"],
         "tuning_table": tuning_table,
-        "mu_search_bounds": (payload.get("mu_min"), payload.get("mu_max")),
         "mesh_bytes": payload.get("mesh_bytes"),
     }
 
 
-def _render_mu_warnings(result: Dict[str, Any], auto_tune_forward: bool) -> None:
+def _render_mu_warnings(result: Dict[str, Any]) -> None:
     mu_used = float(result["mu_used"])
     warnings = []
 
-    typical_mu_min = 1e-3
-    typical_mu_max = 8e-2
+    recommended_mu_min = 8.0
+    recommended_mu_max = 16.0
 
     if mu_used <= 0.0:
         warnings.append("`mu <= 0` implies no attenuation, which is physically implausible for gamma transport in rock.")
-    elif mu_used < typical_mu_min or mu_used > typical_mu_max:
+    elif mu_used < recommended_mu_min or mu_used > recommended_mu_max:
         warnings.append(
-            f"`mu={mu_used:.4f}` is outside the typical effective range "
-            f"`[{typical_mu_min:.4f}, {typical_mu_max:.4f}] 1/m`; interpret it as a compensating fit parameter."
+            f"`mu={mu_used:.1f}` is outside the recommended range "
+            f"`[{recommended_mu_min:.1f}, {recommended_mu_max:.1f}] 1/m` for a first-pass rock/concrete-like attenuation model."
         )
-
-    if auto_tune_forward:
-        bounds = result.get("mu_search_bounds")
-        if bounds and bounds[0] is not None and bounds[1] is not None:
-            mu_min = min(bounds[0], bounds[1])
-            mu_max = max(bounds[0], bounds[1])
-            mu_tol = 0.02 * max(mu_max - mu_min, 1e-12)
-            if abs(mu_used - mu_min) <= mu_tol or abs(mu_used - mu_max) <= mu_tol:
-                warnings.append("Tuned `mu` is near the search boundary; widen the interval to check identifiability.")
 
     for msg in warnings:
         st.warning(msg)
@@ -268,7 +255,7 @@ if "evms_result" not in st.session_state:
     st.session_state["evms_result"] = None
 
 st.sidebar.header("Model Controls")
-mu = st.sidebar.slider("Attenuation mu (1/m)", 1e-4, 0.1, 0.01, format="%.4f")
+mu = st.sidebar.slider("Attenuation mu (1/m)", 8.0, 16.0, 12.0, step=0.1, format="%.1f")
 r_max = st.sidebar.slider("Influence radius R_max (m)", 0.05, 20.0, 5.0, format="%.2f")
 lam_manual = st.sidebar.slider("Lambda (manual)", 1e-3, 1e1, 1.0, format="%.3f")
 use_auto_lam = st.sidebar.checkbox("Auto-select lambda (L-curve)", value=True)
@@ -281,19 +268,14 @@ if use_auto_lam:
 else:
     lambda_method_label = "L-curve"
 
-auto_tune_forward = st.sidebar.checkbox("Auto-tune mu and R_max", value=False)
-if auto_tune_forward:
-    st.sidebar.caption("Grid-search over forward-model parameters")
-    mu_min = st.sidebar.slider("mu min", 1e-4, 0.1, 1e-4, format="%.4f")
-    mu_max = st.sidebar.slider("mu max", 1e-4, 0.1, 0.05, format="%.4f")
-    mu_steps = st.sidebar.slider("mu steps", 2, 10, 4)
+auto_tune_rmax = st.sidebar.checkbox("Auto-tune R_max", value=False)
+if auto_tune_rmax:
+    st.sidebar.caption("Grid-search over the influence radius only; mu stays fixed.")
     rmax_min = st.sidebar.slider("R_max min", 0.05, 20.0, 0.5, format="%.2f")
     rmax_max = st.sidebar.slider("R_max max", 0.05, 20.0, 10.0, format="%.2f")
     rmax_steps = st.sidebar.slider("R_max steps", 2, 10, 4)
     tuning_objective = st.sidebar.selectbox("Tuning objective", ["Residual norm", "Holdout RMSE"], index=0)
 else:
-    mu_min = mu_max = mu
-    mu_steps = 2
     rmax_min = rmax_max = r_max
     rmax_steps = 2
     tuning_objective = "Residual norm"
@@ -452,10 +434,7 @@ if run_clicked:
             "lam_manual": lam_manual,
             "use_auto_lam": use_auto_lam,
             "lambda_selection_method": "holdout" if lambda_method_label == "Holdout CV" else "lcurve",
-            "auto_tune_forward": auto_tune_forward,
-            "mu_min": mu_min,
-            "mu_max": mu_max,
-            "mu_steps": mu_steps,
+            "auto_tune_rmax": auto_tune_rmax,
             "rmax_min": rmax_min,
             "rmax_max": rmax_max,
             "rmax_steps": rmax_steps,
@@ -492,11 +471,11 @@ col_m2.metric("Regularization ||LS||", f"{result['reg_norm']:.4f}")
 col_m3.metric("Trust score", f"{result['trust_score']:.3f}")
 
 st.write(
-    f"Forward parameters: `mu={result['mu_used']:.4f} 1/m`, `R_max={result['rmax_used']:.3f} m`, "
+    f"Forward parameters: `mu={result['mu_used']:.1f} 1/m`, `R_max={result['rmax_used']:.3f} m`, "
     f"`lambda={result['lam']:.5g}`"
 )
 st.write(f"Lambda selection method: `{result['lambda_selection_method']}`")
-_render_mu_warnings(result, auto_tune_forward)
+_render_mu_warnings(result)
 
 if result["calibration_model"] is not None:
     model = result["calibration_model"]
@@ -516,10 +495,9 @@ st.write(f"Fit ratio ||AS - M|| / ||M||: {result['fit_ratio']:.4f}")
 st.write(f"Holdout diagnostics: {result['holdout_summary']}")
 
 if result["tuning_table"] is not None:
-    st.subheader("Forward Tuning Table")
+    st.subheader("R_max Tuning Table")
     st.dataframe(
         {
-            "mu": result["tuning_table"][:, 0],
             "R_max": result["tuning_table"][:, 1],
             "lambda": result["tuning_table"][:, 2],
             "score": result["tuning_table"][:, 3],
