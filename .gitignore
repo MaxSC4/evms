@@ -25,3 +25,5 @@ radioactivity_mesh.gltf
 radioactivity_mesh.ply
 material.mtl
 material_0.png
+
+.streamlit/secrets.toml
