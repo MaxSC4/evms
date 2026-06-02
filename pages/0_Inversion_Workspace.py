@@ -6,7 +6,6 @@ import tempfile
 import zipfile
 from typing import Any, Dict, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -486,22 +485,31 @@ with vol_tab:
     col_slice, col_hist = st.columns([1.3, 1.0])
     with col_slice:
         slice_k = st.slider("Slice index k", 0, result["grid"].dims[2] - 1, min(5, result["grid"].dims[2] - 1))
-        fig_slice, ax_slice = plt.subplots(figsize=(7.2, 5.4))
-        im = ax_slice.imshow(full_s[:, :, slice_k], origin="lower", cmap="RdYlGn_r")
-        ax_slice.set_title(f"Source intensity slice (k={slice_k})")
-        ax_slice.set_xlabel("X index")
-        ax_slice.set_ylabel("Y index")
-        cbar = fig_slice.colorbar(im, ax=ax_slice)
-        cbar.set_label(f"Source intensity ({unit})")
-        st.pyplot(fig_slice)
+        fig_slice = go.Figure(
+            data=go.Heatmap(
+                z=full_s[:, :, slice_k].T,
+                colorscale="RdYlGn",
+                reversescale=True,
+                colorbar=dict(title=f"Source intensity ({unit})"),
+            )
+        )
+        fig_slice.update_layout(
+            title=f"Source intensity slice (k={slice_k})",
+            xaxis_title="X index",
+            yaxis_title="Y index",
+            margin=dict(l=0, r=0, b=0, t=40),
+        )
+        st.plotly_chart(fig_slice, use_container_width=True)
 
     with col_hist:
-        fig_hist, ax_hist = plt.subplots(figsize=(6.2, 4.8))
-        ax_hist.hist(s_vals, bins=30, alpha=0.85)
-        ax_hist.set_title("Value distribution")
-        ax_hist.set_xlabel(f"Source intensity ({unit})")
-        ax_hist.set_ylabel("Voxel count")
-        st.pyplot(fig_hist)
+        fig_hist = go.Figure(data=go.Histogram(x=s_vals, nbinsx=30))
+        fig_hist.update_layout(
+            title="Value distribution",
+            xaxis_title=f"Source intensity ({unit})",
+            yaxis_title="Voxel count",
+            margin=dict(l=0, r=0, b=0, t=40),
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
 
     st.subheader("3D voxel view")
     centers = result["grid"].voxel_centers()
@@ -556,12 +564,14 @@ with diag_tab:
     )
     st.plotly_chart(fig_residual_3d, use_container_width=True)
 
-    fig_res, ax_res = plt.subplots(figsize=(7.2, 4.8))
-    ax_res.hist(residuals, bins=35, alpha=0.85)
-    ax_res.set_title("Residual distribution")
-    ax_res.set_xlabel("Residual (M - AS)")
-    ax_res.set_ylabel("Count")
-    st.pyplot(fig_res)
+    fig_res = go.Figure(data=go.Histogram(x=residuals, nbinsx=35))
+    fig_res.update_layout(
+        title="Residual distribution",
+        xaxis_title="Residual (M - AS)",
+        yaxis_title="Count",
+        margin=dict(l=0, r=0, b=0, t=40),
+    )
+    st.plotly_chart(fig_res, use_container_width=True)
 
 with export_tab:
     st.subheader("Export Outputs")
