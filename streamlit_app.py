@@ -2,6 +2,7 @@
 
 import hmac
 import os
+from typing import Optional
 
 from streamlit_bootstrap import ensure_project_on_path
 
@@ -11,7 +12,7 @@ import streamlit as st
 ensure_project_on_path()
 
 
-def _configured_password() -> str | None:
+def _configured_password() -> Optional[str]:
     try:
         secret = st.secrets.get("APP_PASSWORD")
     except Exception:
