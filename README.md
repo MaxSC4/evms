@@ -40,7 +40,7 @@ where $\mathbf{L}$ is a graph-difference regularizer weighted by layer consisten
 ## Installation
 
 ```bash
-conda env create -f environment.yml
+conda env create -f environment.local.yml
 conda activate evms-env
 pip install -e .
 ```
