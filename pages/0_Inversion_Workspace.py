@@ -7,9 +7,14 @@ import zipfile
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-import plotly.graph_objects as go
 import streamlit as st
 import trimesh
+from matplotlib import cm
+
+try:
+    import plotly.graph_objects as go
+except ModuleNotFoundError:
+    go = None
 
 from streamlit_bootstrap import ensure_project_on_path
 
@@ -74,6 +79,31 @@ def _build_full_volume(grid: VoxelGrid, values: np.ndarray) -> np.ndarray:
     volume = np.full(grid.dims, np.nan, dtype=float)
     volume[grid.mask] = values
     return volume
+
+
+def _render_slice_fallback(slice_values: np.ndarray, unit: str, slice_k: int) -> None:
+    finite_mask = np.isfinite(slice_values)
+    if not np.any(finite_mask):
+        st.info("No finite voxel values are available for this slice.")
+        return
+
+    data = slice_values.T
+    vmin = float(np.nanmin(data))
+    vmax = float(np.nanmax(data))
+    scale = vmax - vmin if vmax > vmin else 1.0
+    normalized = np.zeros_like(data, dtype=float)
+    normalized[finite_mask.T] = (data[finite_mask.T] - vmin) / scale
+    rgb = (cm.get_cmap("RdYlGn_r")(normalized)[..., :3] * 255.0).astype(np.uint8)
+    rgb[~finite_mask.T] = 0
+
+    st.image(rgb, caption=f"Source intensity slice (k={slice_k}) [{unit}]", use_container_width=True)
+
+
+def _render_histogram_fallback(values: np.ndarray, bins: int, title: str) -> None:
+    counts, edges = np.histogram(values, bins=bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    st.caption(title)
+    st.bar_chart({"bin_center": centers, "count": counts}, x="bin_center", y="count")
 
 
 def _compute_trust_score(
@@ -485,93 +515,106 @@ with vol_tab:
     col_slice, col_hist = st.columns([1.3, 1.0])
     with col_slice:
         slice_k = st.slider("Slice index k", 0, result["grid"].dims[2] - 1, min(5, result["grid"].dims[2] - 1))
-        fig_slice = go.Figure(
-            data=go.Heatmap(
-                z=full_s[:, :, slice_k].T,
-                colorscale="RdYlGn",
-                reversescale=True,
-                colorbar=dict(title=f"Source intensity ({unit})"),
+        if go is not None:
+            fig_slice = go.Figure(
+                data=go.Heatmap(
+                    z=full_s[:, :, slice_k].T,
+                    colorscale="RdYlGn",
+                    reversescale=True,
+                    colorbar=dict(title=f"Source intensity ({unit})"),
+                )
             )
-        )
-        fig_slice.update_layout(
-            title=f"Source intensity slice (k={slice_k})",
-            xaxis_title="X index",
-            yaxis_title="Y index",
-            margin=dict(l=0, r=0, b=0, t=40),
-        )
-        st.plotly_chart(fig_slice, use_container_width=True)
+            fig_slice.update_layout(
+                title=f"Source intensity slice (k={slice_k})",
+                xaxis_title="X index",
+                yaxis_title="Y index",
+                margin=dict(l=0, r=0, b=0, t=40),
+            )
+            st.plotly_chart(fig_slice, use_container_width=True)
+        else:
+            _render_slice_fallback(full_s[:, :, slice_k], unit, slice_k)
 
     with col_hist:
-        fig_hist = go.Figure(data=go.Histogram(x=s_vals, nbinsx=30))
-        fig_hist.update_layout(
-            title="Value distribution",
-            xaxis_title=f"Source intensity ({unit})",
-            yaxis_title="Voxel count",
-            margin=dict(l=0, r=0, b=0, t=40),
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
+        if go is not None:
+            fig_hist = go.Figure(data=go.Histogram(x=s_vals, nbinsx=30))
+            fig_hist.update_layout(
+                title="Value distribution",
+                xaxis_title=f"Source intensity ({unit})",
+                yaxis_title="Voxel count",
+                margin=dict(l=0, r=0, b=0, t=40),
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+        else:
+            _render_histogram_fallback(s_vals, 30, "Value distribution")
 
     st.subheader("3D voxel view")
-    centers = result["grid"].voxel_centers()
-    fig_3d = go.Figure(
-        data=go.Scatter3d(
-            x=centers[:, 0],
-            y=centers[:, 1],
-            z=centers[:, 2],
-            mode="markers",
-            marker=dict(
-                size=3,
-                color=s_vals,
-                colorscale="RdYlGn",
-                reversescale=True,
-                colorbar=dict(title=f"Source intensity ({unit})"),
-                showscale=True,
-            ),
+    if go is not None:
+        centers = result["grid"].voxel_centers()
+        fig_3d = go.Figure(
+            data=go.Scatter3d(
+                x=centers[:, 0],
+                y=centers[:, 1],
+                z=centers[:, 2],
+                mode="markers",
+                marker=dict(
+                    size=3,
+                    color=s_vals,
+                    colorscale="RdYlGn",
+                    reversescale=True,
+                    colorbar=dict(title=f"Source intensity ({unit})"),
+                    showscale=True,
+                ),
+            )
         )
-    )
-    fig_3d.update_layout(
-        scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
-        margin=dict(l=0, r=0, b=0, t=35),
-        title="Reconstructed source intensity field",
-    )
-    st.plotly_chart(fig_3d, use_container_width=True)
+        fig_3d.update_layout(
+            scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
+            margin=dict(l=0, r=0, b=0, t=35),
+            title="Reconstructed source intensity field",
+        )
+        st.plotly_chart(fig_3d, use_container_width=True)
+    else:
+        st.info("Interactive 3D voxel visualization is unavailable because Plotly is not installed in this deployment.")
 
 with diag_tab:
     st.subheader("Residual Diagnostics")
     residuals = result["residuals"]
     points = result["points"]
 
-    fig_residual_3d = go.Figure(
-        data=go.Scatter3d(
-            x=points[:, 0],
-            y=points[:, 1],
-            z=points[:, 2],
-            mode="markers",
-            marker=dict(
-                size=4,
-                color=residuals,
-                colorscale="RdBu",
-                reversescale=True,
-                colorbar=dict(title="Residual (M - AS)"),
-                showscale=True,
-            ),
+    if go is not None:
+        fig_residual_3d = go.Figure(
+            data=go.Scatter3d(
+                x=points[:, 0],
+                y=points[:, 1],
+                z=points[:, 2],
+                mode="markers",
+                marker=dict(
+                    size=4,
+                    color=residuals,
+                    colorscale="RdBu",
+                    reversescale=True,
+                    colorbar=dict(title="Residual (M - AS)"),
+                    showscale=True,
+                ),
+            )
         )
-    )
-    fig_residual_3d.update_layout(
-        scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
-        margin=dict(l=0, r=0, b=0, t=35),
-        title="Residual map at measurement points",
-    )
-    st.plotly_chart(fig_residual_3d, use_container_width=True)
+        fig_residual_3d.update_layout(
+            scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
+            margin=dict(l=0, r=0, b=0, t=35),
+            title="Residual map at measurement points",
+        )
+        st.plotly_chart(fig_residual_3d, use_container_width=True)
 
-    fig_res = go.Figure(data=go.Histogram(x=residuals, nbinsx=35))
-    fig_res.update_layout(
-        title="Residual distribution",
-        xaxis_title="Residual (M - AS)",
-        yaxis_title="Count",
-        margin=dict(l=0, r=0, b=0, t=40),
-    )
-    st.plotly_chart(fig_res, use_container_width=True)
+        fig_res = go.Figure(data=go.Histogram(x=residuals, nbinsx=35))
+        fig_res.update_layout(
+            title="Residual distribution",
+            xaxis_title="Residual (M - AS)",
+            yaxis_title="Count",
+            margin=dict(l=0, r=0, b=0, t=40),
+        )
+        st.plotly_chart(fig_res, use_container_width=True)
+    else:
+        st.info("Interactive residual plots are unavailable because Plotly is not installed in this deployment.")
+        _render_histogram_fallback(residuals, 35, "Residual distribution")
 
 with export_tab:
     st.subheader("Export Outputs")
