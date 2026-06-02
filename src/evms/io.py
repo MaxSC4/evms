@@ -10,8 +10,8 @@ from typing import List, Tuple
 from .grid import VoxelGrid
 from .fractures import Fracture
 from scipy.spatial import cKDTree
-import matplotlib.pyplot as plt
 from matplotlib import cm
+from PIL import Image
 
 
 def _normalize_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -324,7 +324,7 @@ def export_textured_obj(
     mtl_path = os.path.join(base_dir, mtl_name)
     tex_path = os.path.join(base_dir, tex_name)
 
-    plt.imsave(tex_path, texture_image)
+    Image.fromarray(texture_image).save(tex_path)
 
     with open(mtl_path, "w") as f:
         f.write(f"newmtl {material_name}\n")
