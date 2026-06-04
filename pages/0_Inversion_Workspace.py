@@ -96,7 +96,7 @@ def _render_slice_fallback(slice_values: np.ndarray, unit: str, slice_k: int) ->
     rgb = (cm.get_cmap("RdYlGn_r")(normalized)[..., :3] * 255.0).astype(np.uint8)
     rgb[~finite_mask.T] = 0
 
-    st.image(rgb, caption=f"Source intensity slice (k={slice_k}) [{unit}]", use_container_width=True)
+    st.image(rgb, caption=f"Source intensity slice (k={slice_k}) [{unit}]", width="stretch")
 
 
 def _render_histogram_fallback(values: np.ndarray, bins: int, title: str) -> None:
@@ -530,7 +530,7 @@ with vol_tab:
                 yaxis_title="Y index",
                 margin=dict(l=0, r=0, b=0, t=40),
             )
-            st.plotly_chart(fig_slice, use_container_width=True)
+            st.plotly_chart(fig_slice, width="stretch")
         else:
             _render_slice_fallback(full_s[:, :, slice_k], unit, slice_k)
 
@@ -543,7 +543,7 @@ with vol_tab:
                 yaxis_title="Voxel count",
                 margin=dict(l=0, r=0, b=0, t=40),
             )
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width="stretch")
         else:
             _render_histogram_fallback(s_vals, 30, "Value distribution")
 
@@ -571,7 +571,7 @@ with vol_tab:
             margin=dict(l=0, r=0, b=0, t=35),
             title="Reconstructed source intensity field",
         )
-        st.plotly_chart(fig_3d, use_container_width=True)
+        st.plotly_chart(fig_3d, width="stretch")
     else:
         st.info("Interactive 3D voxel visualization is unavailable because Plotly is not installed in this deployment.")
 
@@ -602,7 +602,7 @@ with diag_tab:
             margin=dict(l=0, r=0, b=0, t=35),
             title="Residual map at measurement points",
         )
-        st.plotly_chart(fig_residual_3d, use_container_width=True)
+        st.plotly_chart(fig_residual_3d, width="stretch")
 
         fig_res = go.Figure(data=go.Histogram(x=residuals, nbinsx=35))
         fig_res.update_layout(
@@ -611,7 +611,7 @@ with diag_tab:
             yaxis_title="Count",
             margin=dict(l=0, r=0, b=0, t=40),
         )
-        st.plotly_chart(fig_res, use_container_width=True)
+        st.plotly_chart(fig_res, width="stretch")
     else:
         st.info("Interactive residual plots are unavailable because Plotly is not installed in this deployment.")
         _render_histogram_fallback(residuals, 35, "Residual distribution")
@@ -621,7 +621,7 @@ with export_tab:
 
     col_export_0, col_export_1 = st.columns(2)
     with col_export_0:
-        if st.button("Export source field (.npy)", use_container_width=True):
+        if st.button("Export source field (.npy)", width="stretch"):
             save_grid(result["grid"], result["S_display"], "S_hat.npy")
             st.success("Saved `S_hat.npy` in the project root.")
 
@@ -654,7 +654,7 @@ with export_tab:
                     zip_buffer,
                     file_name="radioactivity_mesh_bundle.zip",
                     mime="application/zip",
-                    use_container_width=True,
+                    width="stretch",
                 )
             except Exception as exc:
                 st.error(f"Texture export failed: {exc}")
