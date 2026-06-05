@@ -96,7 +96,7 @@ def _render_slice_fallback(slice_values: np.ndarray, unit: str, slice_k: int) ->
     rgb = (cm.get_cmap("RdYlGn_r")(normalized)[..., :3] * 255.0).astype(np.uint8)
     rgb[~finite_mask.T] = 0
 
-    st.image(rgb, caption=f"Source intensity slice (k={slice_k}) [{unit}]", width="stretch")
+    st.image(rgb, caption=f"Source intensity slice (k={slice_k}) [{unit}]", use_container_width=True)
 
 
 def _render_histogram_fallback(values: np.ndarray, bins: int, title: str) -> None:
@@ -104,6 +104,64 @@ def _render_histogram_fallback(values: np.ndarray, bins: int, title: str) -> Non
     centers = 0.5 * (edges[:-1] + edges[1:])
     st.caption(title)
     st.bar_chart({"bin_center": centers, "count": counts}, x="bin_center", y="count")
+
+
+def _build_inversion_log(result: Dict[str, Any]) -> str:
+    spacing = float(result["grid"].spacing[0])
+    dims_x, dims_y, dims_z = result["grid"].dims
+    mu = float(result["mu_used"])
+    rmax = float(result["rmax_used"])
+    lam = float(result["lam"])
+    trust_score = float(result["trust_score"])
+    data_misfit = float(result["data_misfit_norm"])
+    reg_norm = float(result["reg_norm"])
+    s_vals = np.asarray(result["S_display"], dtype=float)
+    unit = str(result["value_unit"])
+
+    resolution_mode = result.get("resolution_mode", "manual")
+    default_mesh_spacing = result.get("default_mesh_spacing")
+    resolution_factor = result.get("resolution_factor")
+    if resolution_mode == "slider" and default_mesh_spacing is not None and resolution_factor is not None:
+        spacing_line = (
+            f"- Spacing = {spacing:.4f} m (resolution factor = {float(resolution_factor):.2f} ; "
+            f"default mesh spacing equaled {float(default_mesh_spacing):.4f} m per voxel)"
+        )
+    elif default_mesh_spacing is not None:
+        spacing_line = (
+            f"- Spacing = {spacing:.4f} m (manual spacing mode ; "
+            f"default mesh spacing equaled {float(default_mesh_spacing):.4f} m per voxel)"
+        )
+    else:
+        spacing_line = f"- Spacing = {spacing:.4f} m"
+
+    if result.get("use_auto_lam", False):
+        lambda_line = f"- Lambda (compromise parameter ; auto-selected with {result['lambda_selection_method']} method) = {lam:.6f}"
+    else:
+        lambda_line = f"- Lambda (compromise parameter ; manual) = {lam:.6f}"
+
+    lines = [
+        "EVMS inversion run log",
+        "",
+        spacing_line,
+        f"-> Dims X = {dims_x} ; Dims Y = {dims_y} ; Dims Z = {dims_z}",
+        "",
+        f"- Attenuation (mu) [1/m] = {mu:.1f}",
+        "",
+        f"- Influence radius (R_max) (m) = {rmax:.3f}",
+        "",
+        lambda_line,
+        "",
+        f"- Trust score = {trust_score:.3f}",
+        "",
+        f"- Active voxels = {result['grid'].n_voxels}",
+        "",
+        f"- Data misfit || AS - M || = {data_misfit:.4f}",
+        "",
+        f"- Regularization || LS || = {reg_norm:.4f}",
+        "",
+        f"- Source intensity stats ({unit}) = min={s_vals.min():.2f} ; max={s_vals.max():.2f} ; mean={s_vals.mean():.2f}",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _compute_trust_score(
@@ -233,6 +291,10 @@ def _run_inversion(payload: Dict[str, Any]) -> Dict[str, Any]:
         "rmax_used": rmax_used,
         "lam": lam,
         "lambda_selection_method": payload["lambda_selection_method"],
+        "use_auto_lam": payload["use_auto_lam"],
+        "resolution_mode": payload.get("resolution_mode", "manual"),
+        "resolution_factor": payload.get("resolution_factor"),
+        "default_mesh_spacing": payload.get("default_mesh_spacing"),
         "mesh_bytes": payload.get("mesh_bytes"),
     }
 
@@ -379,6 +441,7 @@ if resolution_mode == "Resolution slider":
             "This resolution is relatively dense; expect longer runtimes and a heavier inversion."
         )
 else:
+    resolution_factor = None
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
     with col_s0:
         spacing_scalar = st.number_input("Isotropic spacing", value=float(default_spacing), min_value=1e-6)
@@ -440,6 +503,9 @@ if run_clicked:
             "origin": (origin_x, origin_y, origin_z),
             "spacing": spacing_scalar,
             "dims": (int(dims_x), int(dims_y), int(dims_z)),
+            "resolution_mode": "slider" if resolution_mode == "Resolution slider" else "manual",
+            "resolution_factor": resolution_factor if resolution_mode == "Resolution slider" else None,
+            "default_mesh_spacing": float(default_spacing) if obj_defaults_available else None,
             "mu": mu,
             "r_max": r_max,
             "lam_manual": lam_manual,
@@ -530,7 +596,7 @@ with vol_tab:
                 yaxis_title="Y index",
                 margin=dict(l=0, r=0, b=0, t=40),
             )
-            st.plotly_chart(fig_slice, width="stretch")
+            st.plotly_chart(fig_slice, use_container_width=True)
         else:
             _render_slice_fallback(full_s[:, :, slice_k], unit, slice_k)
 
@@ -543,7 +609,7 @@ with vol_tab:
                 yaxis_title="Voxel count",
                 margin=dict(l=0, r=0, b=0, t=40),
             )
-            st.plotly_chart(fig_hist, width="stretch")
+            st.plotly_chart(fig_hist, use_container_width=True)
         else:
             _render_histogram_fallback(s_vals, 30, "Value distribution")
 
@@ -571,7 +637,7 @@ with vol_tab:
             margin=dict(l=0, r=0, b=0, t=35),
             title="Reconstructed source intensity field",
         )
-        st.plotly_chart(fig_3d, width="stretch")
+        st.plotly_chart(fig_3d, use_container_width=True)
     else:
         st.info("Interactive 3D voxel visualization is unavailable because Plotly is not installed in this deployment.")
 
@@ -602,7 +668,7 @@ with diag_tab:
             margin=dict(l=0, r=0, b=0, t=35),
             title="Residual map at measurement points",
         )
-        st.plotly_chart(fig_residual_3d, width="stretch")
+        st.plotly_chart(fig_residual_3d, use_container_width=True)
 
         fig_res = go.Figure(data=go.Histogram(x=residuals, nbinsx=35))
         fig_res.update_layout(
@@ -611,7 +677,7 @@ with diag_tab:
             yaxis_title="Count",
             margin=dict(l=0, r=0, b=0, t=40),
         )
-        st.plotly_chart(fig_res, width="stretch")
+        st.plotly_chart(fig_res, use_container_width=True)
     else:
         st.info("Interactive residual plots are unavailable because Plotly is not installed in this deployment.")
         _render_histogram_fallback(residuals, 35, "Residual distribution")
@@ -619,13 +685,23 @@ with diag_tab:
 with export_tab:
     st.subheader("Export Outputs")
 
-    col_export_0, col_export_1 = st.columns(2)
+    col_export_0, col_export_1, col_export_2 = st.columns(3)
     with col_export_0:
-        if st.button("Export source field (.npy)", width="stretch"):
+        if st.button("Export source field (.npy)", use_container_width=True):
             save_grid(result["grid"], result["S_display"], "S_hat.npy")
             st.success("Saved `S_hat.npy` in the project root.")
 
     with col_export_1:
+        log_text = _build_inversion_log(result)
+        st.download_button(
+            "Download inversion log (.log)",
+            log_text,
+            file_name="evms_inversion.log",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+    with col_export_2:
         if result["mesh_bytes"] is None:
             st.info("Mesh texture export is available only when the grid input is an OBJ file.")
         else:
@@ -654,7 +730,7 @@ with export_tab:
                     zip_buffer,
                     file_name="radioactivity_mesh_bundle.zip",
                     mime="application/zip",
-                    width="stretch",
+                    use_container_width=True,
                 )
             except Exception as exc:
                 st.error(f"Texture export failed: {exc}")
