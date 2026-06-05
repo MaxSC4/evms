@@ -197,7 +197,7 @@ def render_logo_placeholder() -> None:
     """Render laboratory logo if found, else show clear placeholder."""
     logo_path = _resolve_logo_path()
     if logo_path is not None:
-        st.image(str(logo_path), width="stretch")
+        st.image(str(logo_path), use_container_width=True)
         return
 
     st.markdown(
